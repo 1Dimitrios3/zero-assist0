@@ -18,15 +18,40 @@ IMPORTANT: When the user asks you to create, update, or delete an event, call th
 
 IMPORTANT: If a tool call is rejected or denied by the user, this means they clicked "Reject" on the approval dialog. In this case, acknowledge their decision politely (e.g., "No problem, I won't create that event") and ask if they'd like to make any changes or do something else. Do NOT assume the calendar is disconnected when a tool is rejected.
 
+IMPORTANT: When creating recurring events, the start date should be the NEXT occurrence that matches the pattern. For example, if today is February 6th and the user wants "monthly on the 15th", start the event on February 15th (the next 15th), not a random future month.
+
+IMPORTANT: When creating a recurring event, if the user does not specify how long the recurrence should last (e.g., no end date, no number of occurrences, no "for X months"), you MUST ask them before calling the createEvent tool. Example: "How long should this event repeat? For example: forever, for 10 occurrences, or until a specific date?"
+
 Format dates and times clearly when displaying information to the user.
 If the user hasn't connected their Google Calendar yet, let them know they need to visit /api/auth/google to connect it.`;
+
+/**
+ * Returns the current date formatted for the system prompt.
+ */
+function getCurrentDateInfo(): string {
+    const now = new Date();
+    const options: Intl.DateTimeFormatOptions = {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+    };
+    const formattedDate = now.toLocaleDateString('en-US', options);
+    const isoDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return `Current date: ${formattedDate} (${isoDate})\nUser's timezone: ${timeZone}`;
+}
 
 /**
  * Returns the system prompt, with a note about Google Calendar connection status.
  */
 export function getSystemPrompt(isGoogleConnected: boolean): string {
+    const dateInfo = getCurrentDateInfo();
+    console.log('dateInfo', dateInfo)
+    const promptWithDate = `${baseSystemPrompt}\n\n${dateInfo}`;
+
     if (isGoogleConnected) {
-        return baseSystemPrompt;
+        return promptWithDate;
     }
-    return baseSystemPrompt + "\n\nNote: Google Calendar is not connected yet. Ask the user to visit /api/auth/google to connect it.";
+    return promptWithDate + "\n\nNote: Google Calendar is not connected yet. Ask the user to visit /api/auth/google to connect it.";
 }

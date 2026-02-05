@@ -82,6 +82,7 @@ export async function createEvent(
       overrides?: Array<{ method: "email" | "popup"; minutes: number }>;
     };
     attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+    recurrence?: string[];
   },
   sendUpdates: "all" | "externalOnly" | "none" = "all"
 ) {
@@ -107,6 +108,7 @@ export async function updateEvent(
       overrides?: Array<{ method: "email" | "popup"; minutes: number }>;
     };
     attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+    recurrence?: string[];
   },
   sendUpdates: "all" | "externalOnly" | "none" = "all"
 ) {

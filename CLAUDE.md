@@ -71,12 +71,13 @@ Once connected, you can ask the AI:
 - "What's on my calendar today?"
 - "Show me my events for this week"
 - "Schedule a meeting tomorrow at 2pm called Team Standup"
-- "Create an event called Vacation on February 15th" (will ask for time)
 - "Update my 3pm meeting to 4pm"
 - "Delete my dentist appointment"
 - "Search for meetings with John"
 - "Create a meeting with a 10 minute reminder"
 - "Schedule a call and invite john@example.com"
+- "Create a daily standup at 9am for the next 5 occurrences"
+- "Schedule a weekly team sync every Monday and Thursday at 12pm for the whole year"
 
 ## Development Commands
 

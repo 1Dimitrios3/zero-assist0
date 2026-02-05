@@ -46,6 +46,81 @@ const attendeeSchema = z.object({
     .describe("Whether this guest is optional (default: false)"),
 });
 
+const recurrenceSchema = z.object({
+  frequency: z
+    .enum(["daily", "weekly", "monthly", "yearly"])
+    .describe("How often the event repeats: daily, weekly, monthly, or yearly"),
+  interval: z
+    .number()
+    .optional()
+    .describe("Repeat every N periods. Default is 1. Bi-weekly means interval=2 (every 2 weeks). Bi-monthly means interval=2 (every 2 months)."),
+  count: z
+    .number()
+    .optional()
+    .describe("Number of occurrences. Only use when user explicitly says 'for X occurrences'."),
+  until: z
+    .string()
+    .optional()
+    .describe("End date in YYYY-MM-DD format. Use for time-based durations. 'For the whole year' means until Dec 31 of current year. 'For a year' means 1 year from start date."),
+  byDay: z
+    .array(z.enum(["MO", "TU", "WE", "TH", "FR", "SA", "SU"]))
+    .optional()
+    .describe("Days of week for weekly recurrence: MO, TU, WE, TH, FR, SA, SU"),
+  byMonthDay: z
+    .array(z.number())
+    .optional()
+    .describe("Days of the month for monthly recurrence. Use -1 for last day of month, -2 for second-to-last, etc."),
+  byMonth: z
+    .array(z.number())
+    .optional()
+    .describe("Months (1-12) for yearly recurrence"),
+});
+
+function buildRRule(recurrence: z.infer<typeof recurrenceSchema>): string {
+  console.log('[buildRRule] input:', JSON.stringify(recurrence, null, 2));
+
+  const parts: string[] = [`FREQ=${recurrence.frequency.toUpperCase()}`];
+
+  // Only add INTERVAL if greater than 1 (1 is the default)
+  const interval = recurrence.interval ?? 1;
+  if (interval > 1) {
+    parts.push(`INTERVAL=${interval}`);
+  }
+
+  // COUNT and UNTIL are mutually exclusive per RFC 5545 - prioritize COUNT when explicitly specified
+  if (recurrence.count !== undefined && recurrence.count > 0) {
+    parts.push(`COUNT=${recurrence.count}`);
+  } else if (recurrence.until) {
+    // Only use UNTIL if count is not specified
+    const untilDate = new Date(recurrence.until);
+    if (!isNaN(untilDate.getTime())) {
+      const year = untilDate.getUTCFullYear();
+      const month = String(untilDate.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(untilDate.getUTCDate()).padStart(2, '0');
+      parts.push(`UNTIL=${year}${month}${day}`);
+      console.log('[buildRRule] UNTIL date:', `${year}${month}${day}`);
+    } else {
+      console.log('[buildRRule] Invalid until date:', recurrence.until);
+    }
+  }
+
+  if (recurrence.byDay && recurrence.byDay.length > 0) {
+    parts.push(`BYDAY=${recurrence.byDay.join(',')}`);
+  }
+
+  if (recurrence.byMonthDay && recurrence.byMonthDay.length > 0) {
+    parts.push(`BYMONTHDAY=${recurrence.byMonthDay.join(',')}`);
+  }
+
+  if (recurrence.byMonth && recurrence.byMonth.length > 0) {
+    parts.push(`BYMONTH=${recurrence.byMonth.join(',')}`);
+  }
+
+  const rrule = `RRULE:${parts.join(';')}`;
+  console.log('[buildRRule] output:', rrule);
+  return rrule;
+}
+
 const createEventSchema = z.object({
   summary: z.string().describe("Title of the event"),
   description: z.string().optional().describe("Description of the event"),
@@ -69,6 +144,9 @@ const createEventSchema = z.object({
     .array(attendeeSchema)
     .optional()
     .describe("List of guests to invite to the event. Each guest will receive an email invitation. Example: [{email: 'john@example.com', displayName: 'John Doe'}]"),
+  recurrence: recurrenceSchema
+    .optional()
+    .describe("Make this a recurring event. Examples: daily for 10 days, weekly on Mon/Wed/Fri, monthly on the 15th"),
 });
 
 const updateEventSchema = z.object({
@@ -87,6 +165,9 @@ const updateEventSchema = z.object({
     .array(attendeeSchema)
     .optional()
     .describe("List of guests to add to the event. Note: This replaces all existing guests. Example: [{email: 'john@example.com'}]"),
+  recurrence: recurrenceSchema
+    .optional()
+    .describe("Update recurrence pattern. Set to make a single event recurring or modify existing recurrence."),
 });
 
 const deleteEventSchema = z.object({
@@ -123,12 +204,19 @@ export const calendarTools = {
 
   createEvent: tool({
     description:
-      "Create a new calendar event. Use this to schedule meetings, appointments, or reminders. You can set custom notification times using the reminders parameter and invite guests using the guests parameter.",
+      "Create a new calendar event. Use this to schedule meetings, appointments, or reminders. You can set custom notification times using the reminders parameter, invite guests using the guests parameter, and create recurring events using the recurrence parameter.",
     inputSchema: createEventSchema,
     needsApproval: true,
     execute: async (params: z.infer<typeof createEventSchema>) => {
-      const { summary, description, startDateTime, endDateTime, location, timeZone, reminders, guests } = params;
-      const event = await createEvent({
+      const { summary, description, startDateTime, endDateTime, location, timeZone, reminders, guests, recurrence } = params;
+
+      // Debug: Log recurrence params
+      console.log('[createEvent] params.recurrence:', JSON.stringify(recurrence, null, 2));
+
+      const builtRecurrence = recurrence ? [buildRRule(recurrence)] : undefined;
+      console.log('[createEvent] builtRecurrence:', builtRecurrence);
+
+      const eventPayload = {
         summary,
         description,
         start: { dateTime: startDateTime, timeZone },
@@ -138,7 +226,13 @@ export const calendarTools = {
           ? { useDefault: false, overrides: reminders }
           : undefined,
         attendees: guests,
-      });
+        recurrence: builtRecurrence,
+      };
+      console.log('[createEvent] eventPayload:', JSON.stringify(eventPayload, null, 2));
+
+      const event = await createEvent(eventPayload);
+
+      console.log('[createEvent] response event.recurrence:', event.recurrence);
       return {
         id: event.id,
         summary: event.summary,
@@ -146,16 +240,17 @@ export const calendarTools = {
         start: event.start?.dateTime,
         end: event.end?.dateTime,
         guests: event.attendees?.map((a) => a.email),
+        recurrence: event.recurrence,
       };
     },
   }),
 
   updateEvent: tool({
-    description: "Update an existing calendar event by its ID. You can update reminder/notification times and add/replace guests.",
+    description: "Update an existing calendar event by its ID. You can update reminder/notification times, add/replace guests, and modify recurrence patterns.",
     inputSchema: updateEventSchema,
     needsApproval: true,
     execute: async (params: z.infer<typeof updateEventSchema>) => {
-      const { eventId, summary, description, startDateTime, endDateTime, location, timeZone, reminders, guests } = params;
+      const { eventId, summary, description, startDateTime, endDateTime, location, timeZone, reminders, guests, recurrence } = params;
       const updateData: Parameters<typeof updateEvent>[1] = {};
       if (summary) updateData.summary = summary;
       if (description) updateData.description = description;
@@ -172,6 +267,9 @@ export const calendarTools = {
       if (guests) {
         updateData.attendees = guests;
       }
+      if (recurrence) {
+        updateData.recurrence = [buildRRule(recurrence)];
+      }
 
       const event = await updateEvent(eventId, updateData);
       return {
@@ -180,6 +278,7 @@ export const calendarTools = {
         htmlLink: event.htmlLink,
         updated: true,
         guests: event.attendees?.map((a) => a.email),
+        recurrence: event.recurrence,
       };
     },
   }),
