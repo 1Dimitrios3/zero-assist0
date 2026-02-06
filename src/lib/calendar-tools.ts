@@ -144,9 +144,14 @@ const createEventSchema = z.object({
     .array(attendeeSchema)
     .optional()
     .describe("List of guests to invite to the event. Each guest will receive an email invitation. Example: [{email: 'john@example.com', displayName: 'John Doe'}]"),
+  isRecurring: z
+    .boolean()
+    .default(false)
+    .describe("Set to true if the user wants the event to happen more than once. Examples that require isRecurring=true: 'every Monday', 'for the next 5 days', 'weekly', 'next two Mondays', 'monthly on the 15th'. Set to false only for single one-time events."),
   recurrence: recurrenceSchema
     .optional()
-    .describe("Make this a recurring event. Examples: daily for 10 days, weekly on Mon/Wed/Fri, monthly on the 15th"),
+    .nullable()
+    .describe("Make this a recurring event. Only used when isRecurring is true. Omit or set to null for one-time events."),
 });
 
 const updateEventSchema = z.object({
@@ -204,16 +209,21 @@ export const calendarTools = {
 
   createEvent: tool({
     description:
-      "Create a new calendar event. Use this to schedule meetings, appointments, or reminders. You can set custom notification times using the reminders parameter, invite guests using the guests parameter, and create recurring events using the recurrence parameter.",
+      "Create a new calendar event. Use this to schedule meetings, appointments, or reminders. You can set custom notification times using the reminders parameter, invite guests using the guests parameter, and create recurring events using the recurrence parameter. IMPORTANT: Only include recurrence if the user explicitly asks for a recurring event. Do not add recurrence for one-time events.",
     inputSchema: createEventSchema,
     needsApproval: true,
     execute: async (params: z.infer<typeof createEventSchema>) => {
-      const { summary, description, startDateTime, endDateTime, location, timeZone, reminders, guests, recurrence } = params;
+      const { summary, description, startDateTime, endDateTime, location, timeZone, reminders, guests, isRecurring, recurrence } = params;
 
       // Debug: Log recurrence params
+      console.log('[createEvent] isRecurring:', isRecurring);
       console.log('[createEvent] params.recurrence:', JSON.stringify(recurrence, null, 2));
 
-      const builtRecurrence = recurrence ? [buildRRule(recurrence)] : undefined;
+      // Only build recurrence if explicitly marked as recurring OR if count > 1
+      const validRecurrence = recurrence ?? undefined; // treat null as undefined
+      const builtRecurrence = (isRecurring || (validRecurrence?.count && validRecurrence.count > 1)) && validRecurrence
+        ? [buildRRule(validRecurrence)]
+        : undefined;
       console.log('[createEvent] builtRecurrence:', builtRecurrence);
 
       const eventPayload = {
