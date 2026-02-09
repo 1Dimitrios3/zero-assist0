@@ -1,7 +1,15 @@
-import { generateText, Output } from "ai";
+import { generateText, Output, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { listEvents } from "./google-calendar";
+
+/**
+ * Result of the high-level conflict check.
+ */
+export interface ConflictCheckResult {
+  hasConflict: boolean;
+  conflictContext: string;
+}
 
 const eventIntentSchema = z.object({
   isCreateEvent: z
@@ -150,3 +158,148 @@ export const formatConflictMessage = (result: {
 
   return message;
 };
+
+// ---------------------------------------------------------------------------
+// High-level conflict check
+// ---------------------------------------------------------------------------
+
+/**
+ * Finds the last message with the given role.
+ */
+function findLastMessageByRole(
+  messages: UIMessage[],
+  role: "user" | "assistant"
+): UIMessage | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === role) return messages[i];
+  }
+  return undefined;
+}
+
+/**
+ * Extracts the concatenated text from a message's text parts.
+ */
+function extractTextFromParts(message: UIMessage): string {
+  return (
+    message.parts
+      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join(" ") ?? ""
+  );
+}
+
+/**
+ * Checks whether the last assistant message contains a conflictWarning tool part,
+ * indicating the user is currently responding to a conflict prompt.
+ */
+function isRespondingToConflictWarning(messages: UIMessage[]): boolean {
+  const lastAssistantMessage = findLastMessageByRole(messages, "assistant");
+  return (
+    lastAssistantMessage?.parts?.some(
+      (p) => p.type === "tool-conflictWarning"
+    ) ?? false
+  );
+}
+
+/**
+ * Builds the system-prompt context string that tells the LLM to proceed
+ * after the user has already approved a conflict.
+ */
+function buildConflictApprovedContext(): string {
+  return `\n\nIMPORTANT: The user was just shown a scheduling conflict warning and has APPROVED creating the event anyway. You MUST now call createEvent with the exact time the user originally requested. Do NOT suggest alternative times, do NOT warn about conflicts again, do NOT refuse. The user has made their decision and you must respect it.`;
+}
+
+/**
+ * Builds the system-prompt context string that instructs the LLM to call the
+ * conflictWarning tool with the detected conflict data.
+ */
+function buildConflictDetectedContext(
+  summary: string,
+  conflictingEvents: Array<{ title: string; startTime: string; endTime: string }>
+): string {
+  const eventsJson = JSON.stringify(conflictingEvents);
+  return `\n\n<conflict-detected>
+            A scheduling conflict was found. You MUST call the conflictWarning tool with this data:
+            - summary: "${summary}"
+            - conflictingEvents: ${eventsJson}
+            Do NOT call createEvent. After the user responds to the conflict warning, follow their instructions.
+            </conflict-detected>`;
+}
+
+/**
+ * High-level function that encapsulates all conflict detection logic.
+ *
+ * It determines whether the user is creating a new event, checks for
+ * scheduling conflicts with existing calendar events, and returns the
+ * appropriate context to inject into the system prompt.
+ *
+ * @param messages - The validated UIMessage array from the chat request
+ * @param googleConnected - Whether the user has connected their Google Calendar
+ * @returns An object with `hasConflict` (boolean) and `conflictContext` (string)
+ */
+export async function checkForSchedulingConflict(
+  messages: UIMessage[],
+  googleConnected: boolean
+): Promise<ConflictCheckResult> {
+  let conflictContext = "";
+  let hasConflict = false;
+
+  // When the user types a new message, the last message is a user message.
+  // When sendAutomaticallyWhen fires after tool approval, the last message is an assistant message.
+  const lastMessage = messages[messages.length - 1];
+  const isFreshUserMessage = lastMessage?.role === "user";
+
+  if (googleConnected && isFreshUserMessage) {
+    const lastUserMessage = findLastMessageByRole(messages, "user");
+    const userText = lastUserMessage ? extractTextFromParts(lastUserMessage) : "";
+
+    if (userText) {
+      try {
+        const currentDate = new Date().toISOString();
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const { isCreateEvent, proposedStartTime, proposedEndTime } =
+          await extractEventIntent(userText, currentDate, timeZone);
+        console.log('intent.isCreateEvent ---<><><>', isCreateEvent)
+
+        if (
+          isCreateEvent &&
+          proposedStartTime &&
+          proposedEndTime
+        ) {
+          const existingEvents = await getExistingEvents(
+            proposedStartTime,
+            proposedEndTime
+          );
+          console.log('existingEvents >>>>>>>>>>', existingEvents)
+
+          if (existingEvents.length > 0) {
+            const { output: conflictResult } = await detectConflict(
+              existingEvents,
+              proposedStartTime,
+              proposedEndTime
+            );
+
+            console.log('conflictResult ><><><', conflictResult)
+
+            if (conflictResult?.decision === "1") {
+              hasConflict = true;
+              conflictContext = buildConflictDetectedContext(
+                conflictResult.summary ?? "",
+                conflictResult.conflictingEvents ?? []
+              );
+            }
+          }
+        }
+      } catch (error) {
+        console.error("[conflict-detection] Error:", error);
+      }
+    }
+  }
+
+  // When the user already responded to a conflict, tell the LLM to proceed
+  if (isRespondingToConflictWarning(messages)) {
+    conflictContext = buildConflictApprovedContext();
+  }
+
+  return { hasConflict, conflictContext };
+}
