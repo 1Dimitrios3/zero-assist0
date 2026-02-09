@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
+  AlertTriangleIcon,
   CalendarPlusIcon,
   CalendarIcon,
   Trash2Icon,
@@ -27,6 +28,17 @@ interface Guest {
   optional?: boolean;
 }
 
+interface ConflictingEvent {
+  title: string;
+  startTime: string;
+  endTime: string;
+}
+
+interface ConflictWarningInput {
+  summary: string;
+  conflictingEvents: ConflictingEvent[];
+}
+
 interface CalendarEventInput {
   summary?: string;
   description?: string;
@@ -41,7 +53,7 @@ interface CalendarEventInput {
 
 interface ToolApprovalProps {
   toolName: string;
-  input: CalendarEventInput;
+  input: CalendarEventInput | ConflictWarningInput;
   approvalId: string;
   addToolApprovalResponse: ChatAddToolApproveResponseFunction;
 }
@@ -69,6 +81,8 @@ function getToolIcon(toolName: string) {
       return <CalendarIcon className="size-5" />;
     case "deleteEvent":
       return <Trash2Icon className="size-5" />;
+    case "conflictWarning":
+      return <AlertTriangleIcon className="size-5" />;
     default:
       return <CalendarIcon className="size-5" />;
   }
@@ -82,6 +96,8 @@ function getToolTitle(toolName: string) {
       return "Update Calendar Event";
     case "deleteEvent":
       return "Delete Calendar Event";
+    case "conflictWarning":
+      return "Scheduling Conflict Detected";
     default:
       return "Calendar Action";
   }
@@ -95,6 +111,8 @@ function getToolDescription(toolName: string) {
       return "The assistant wants to update an existing event:";
     case "deleteEvent":
       return "The assistant wants to delete an event from your calendar:";
+    case "conflictWarning":
+      return "A scheduling conflict was found with existing events:";
     default:
       return "The assistant wants to perform a calendar action:";
   }
@@ -149,6 +167,7 @@ export function ToolApproval({
   };
 
   const isDestructive = toolName === "deleteEvent";
+  const isConflict = toolName === "conflictWarning";
 
   return (
     <Dialog.Root open={open} onOpenChange={() => {/* Prevent closing on backdrop click */}}>
@@ -158,7 +177,8 @@ export function ToolApproval({
           <Dialog.Title
             className={cn(
               "flex items-center gap-2 text-lg font-semibold",
-              isDestructive && "text-destructive"
+              isDestructive && "text-destructive",
+              isConflict && "text-amber-500"
             )}
           >
             {getToolIcon(toolName)}
@@ -169,76 +189,95 @@ export function ToolApproval({
           </Dialog.Description>
 
           <div className="mt-4 space-y-3 rounded-md bg-muted p-4">
-            {input.summary && (
-              <div className="flex items-start gap-2">
-                <CalendarIcon className="mt-0.5 size-4 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">{input.summary}</p>
-                  {input.description && (
-                    <p className="text-sm text-muted-foreground">
-                      {input.description}
+            {isConflict ? (
+              <>
+                <p className="text-sm">{(input as ConflictWarningInput).summary}</p>
+                {(input as ConflictWarningInput).conflictingEvents.map((event, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-md border bg-background p-3">
+                    <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p className="font-medium">{event.title}</p>
+                      <p className="text-muted-foreground">
+                        {formatDateTime(event.startTime)} - {formatDateTime(event.endTime)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                {input.summary && (
+                  <div className="flex items-start gap-2">
+                    <CalendarIcon className="mt-0.5 size-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-sm font-medium">{input.summary}</p>
+                      {"description" in input && input.description && (
+                        <p className="text-sm text-muted-foreground">
+                          {input.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {"startDateTime" in input && (input.startDateTime || input.endDateTime) && (
+                  <div className="flex items-center gap-2">
+                    <ClockIcon className="size-4 text-muted-foreground" />
+                    <p className="text-sm">
+                      {input.startDateTime && formatDateTime(input.startDateTime)}
+                      {input.startDateTime && input.endDateTime && " - "}
+                      {input.endDateTime && formatDateTime(input.endDateTime)}
                     </p>
-                  )}
-                </div>
-              </div>
-            )}
+                  </div>
+                )}
 
-            {(input.startDateTime || input.endDateTime) && (
-              <div className="flex items-center gap-2">
-                <ClockIcon className="size-4 text-muted-foreground" />
-                <p className="text-sm">
-                  {input.startDateTime && formatDateTime(input.startDateTime)}
-                  {input.startDateTime && input.endDateTime && " - "}
-                  {input.endDateTime && formatDateTime(input.endDateTime)}
-                </p>
-              </div>
-            )}
+                {"location" in input && input.location && (
+                  <div className="flex items-center gap-2">
+                    <MapPinIcon className="size-4 text-muted-foreground" />
+                    <p className="text-sm">{input.location}</p>
+                  </div>
+                )}
 
-            {input.location && (
-              <div className="flex items-center gap-2">
-                <MapPinIcon className="size-4 text-muted-foreground" />
-                <p className="text-sm">{input.location}</p>
-              </div>
-            )}
+                {"guests" in input && input.guests && input.guests.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <UsersIcon className="mt-0.5 size-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p className="font-medium">Guests:</p>
+                      <ul className="list-inside list-disc">
+                        {input.guests.map((guest, i) => (
+                          <li key={i}>
+                            {guest.displayName || guest.email}
+                            {guest.optional && " (optional)"}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
 
-            {input.guests && input.guests.length > 0 && (
-              <div className="flex items-start gap-2">
-                <UsersIcon className="mt-0.5 size-4 text-muted-foreground" />
-                <div className="text-sm">
-                  <p className="font-medium">Guests:</p>
-                  <ul className="list-inside list-disc">
-                    {input.guests.map((guest, i) => (
-                      <li key={i}>
-                        {guest.displayName || guest.email}
-                        {guest.optional && " (optional)"}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
+                {"reminders" in input && input.reminders && input.reminders.length > 0 && (
+                  <div className="flex items-start gap-2">
+                    <BellIcon className="mt-0.5 size-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p className="font-medium">Reminders:</p>
+                      <ul className="list-inside list-disc">
+                        {input.reminders.map((reminder, i) => (
+                          <li key={i}>
+                            {reminder.method === "popup" ? "Notification" : "Email"}{" "}
+                            {formatReminderTime(reminder.minutes)}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
 
-            {input.reminders && input.reminders.length > 0 && (
-              <div className="flex items-start gap-2">
-                <BellIcon className="mt-0.5 size-4 text-muted-foreground" />
-                <div className="text-sm">
-                  <p className="font-medium">Reminders:</p>
-                  <ul className="list-inside list-disc">
-                    {input.reminders.map((reminder, i) => (
-                      <li key={i}>
-                        {reminder.method === "popup" ? "Notification" : "Email"}{" "}
-                        {formatReminderTime(reminder.minutes)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            {input.eventId && (
-              <div className="text-xs text-muted-foreground">
-                Event ID: {input.eventId}
-              </div>
+                {"eventId" in input && input.eventId && (
+                  <div className="text-xs text-muted-foreground">
+                    Event ID: {input.eventId}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -249,7 +288,7 @@ export function ToolApproval({
               className="inline-flex h-9 items-center justify-center gap-2 rounded-md border bg-background px-4 text-sm font-medium hover:bg-accent"
             >
               <XIcon className="size-4" />
-              Reject
+              {isConflict ? "Choose Different Time" : "Reject"}
             </button>
             <button
               type="button"
@@ -258,11 +297,13 @@ export function ToolApproval({
                 "inline-flex h-9 items-center justify-center gap-2 rounded-md px-4 text-sm font-medium",
                 isDestructive
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : isConflict
+                    ? "bg-amber-500 text-white hover:bg-amber-600"
+                    : "bg-primary text-primary-foreground hover:bg-primary/90"
               )}
             >
               <CheckIcon className="size-4" />
-              Approve
+              {isConflict ? "Create Anyway" : "Approve"}
             </button>
           </div>
         </Dialog.Content>

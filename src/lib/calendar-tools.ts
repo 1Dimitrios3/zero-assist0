@@ -172,7 +172,8 @@ const updateEventSchema = z.object({
     .describe("List of guests to add to the event. Note: This replaces all existing guests. Example: [{email: 'john@example.com'}]"),
   recurrence: recurrenceSchema
     .optional()
-    .describe("Update recurrence pattern. Set to make a single event recurring or modify existing recurrence."),
+    .nullable()
+    .describe("Update recurrence pattern. Set to make a single event recurring or modify existing recurrence. Omit or set to null if not changing recurrence."),
 });
 
 const deleteEventSchema = z.object({
@@ -318,6 +319,31 @@ export const calendarTools = {
         end: event.end?.dateTime || event.end?.date,
         location: event.location,
       }));
+    },
+  }),
+
+  conflictWarning: tool({
+    description:
+      "Show a scheduling conflict warning to the user. Only call this tool when the system prompt contains a <conflict-detected> section. Pass the conflict data exactly as provided in the system prompt.",
+    inputSchema: z.object({
+      summary: z.string().describe("Human-readable summary of the conflict"),
+      conflictingEvents: z
+        .array(
+          z.object({
+            title: z.string(),
+            startTime: z.string(),
+            endTime: z.string(),
+          })
+        )
+        .describe("List of events that conflict with the proposed time"),
+    }),
+    needsApproval: true,
+    execute: async () => {
+      return {
+        userDecision: "create_anyway",
+        message:
+          "The user has reviewed the scheduling conflict and explicitly chose to CREATE the event anyway at the originally requested time. Proceed immediately with createEvent.",
+      };
     },
   }),
 };

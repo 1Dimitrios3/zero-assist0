@@ -49,6 +49,8 @@ export function filterSupersededToolParts(
       // Keep non-assistant messages as-is
       if (msg.role !== "assistant") return msg;
 
+      const hadToolParts = msg.parts.some((p) => p.type.startsWith("tool-"));
+
       const filteredParts = msg.parts.filter((part) => {
         // Keep non-tool parts
         if (!part.type.startsWith("tool-")) return true;
@@ -76,6 +78,15 @@ export function filterSupersededToolParts(
 
         return true;
       });
+
+      const hasToolPartsAfterFilter = filteredParts.some((p) => p.type.startsWith("tool-"));
+
+      // Drop assistant messages that originally had tool parts but lost them all
+      // after filtering. These are "husk" messages whose text content is duplicated
+      // in the subsequent assistant message that holds the final tool state.
+      if (hadToolParts && !hasToolPartsAfterFilter) {
+        return { ...msg, parts: [] };
+      }
 
       return { ...msg, parts: filteredParts };
     })

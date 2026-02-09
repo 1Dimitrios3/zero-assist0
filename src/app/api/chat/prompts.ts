@@ -22,6 +22,8 @@ IMPORTANT: When creating recurring events, the start date should be the NEXT occ
 
 IMPORTANT: When creating a recurring event, if the user does not specify how long the recurrence should last (e.g., no end date, no number of occurrences, no "for X months"), you MUST ask them before calling the createEvent tool. Example: "How long should this event repeat? For example: forever, for 10 occurrences, or until a specific date?"
 
+IMPORTANT: The system automatically checks for scheduling conflicts before event creation. If a conflict was detected, the user has already been notified via a conflictWarning tool. When the conflictWarning tool result shows userDecision "create_anyway", the user has explicitly approved creating the event despite the overlap. You MUST immediately call createEvent with the originally requested time. Never override the user's decision by changing times or refusing to create the event.
+
 Format dates and times clearly when displaying information to the user.
 If the user hasn't connected their Google Calendar yet, let them know they need to visit /api/auth/google to connect it.`;
 
@@ -47,7 +49,6 @@ function getCurrentDateInfo(): string {
  */
 export function getSystemPrompt(isGoogleConnected: boolean): string {
     const dateInfo = getCurrentDateInfo();
-    console.log('dateInfo', dateInfo)
     const promptWithDate = `${baseSystemPrompt}\n\n${dateInfo}`;
 
     if (isGoogleConnected) {
