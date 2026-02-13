@@ -5,6 +5,7 @@ AI-powered assistant with Google Calendar integration.
 ## Features
 
 - Chat with AI assistant
+- Voice input with audio transcription (OpenAI Whisper)
 - View, create, update, and delete calendar events
 - Search for events
 - Add reminders and invite guests

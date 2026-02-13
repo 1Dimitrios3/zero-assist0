@@ -54,6 +54,7 @@ GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
 GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 MODEL_ID=the_model_id_of_your_preference
+OPENAI_API_KEY=or_your_provider_of_preference
 ```
 
 ### Step 6: Connect Your Google Calendar
@@ -79,6 +80,10 @@ Once connected, you can ask the AI:
 - "Create a daily standup at 9am for the next 5 occurrences"
 - "Schedule a weekly team sync every Monday and Thursday at 12pm for the whole year"
 
+## Voice Input
+
+The app supports voice input via browser microphone recording, transcribed using OpenAI's Whisper model. Audio is captured as WebM/MP4 (depending on browser support), sent as multipart form data to the transcription endpoint, and the resulting text is inserted into the chat input.
+
 ## Development Commands
 
 ```bash
@@ -92,9 +97,11 @@ npx tsc --noEmit  # Type check
 
 - **`/src/app/api/chat/route.ts`** - Chat API with calendar tools
 - **`/src/app/api/chat/prompts.ts`** - System prompt and constants
+- **`/src/app/api/transcribe/route.ts`** - Audio transcription endpoint (Whisper)
 - **`/src/app/api/auth/google/`** - OAuth flow endpoints
 - **`/src/lib/google-calendar.ts`** - Google Calendar API wrapper
 - **`/src/lib/calendar-tools.ts`** - AI SDK tool definitions
+- **`/src/hooks/use-audio-recorder.ts`** - Audio recording and transcription hook
 - **`/src/app/chat.tsx`** - Chat UI component
 - **`/src/app/utils/message-utils.ts`** - Message filtering helpers
 - **`/src/types/messages.ts`** - Type definitions for messages
