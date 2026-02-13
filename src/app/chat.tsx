@@ -23,8 +23,10 @@ import {
   PromptInputToolbar,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { RecordButton } from "@/components/ai-elements/record-button";
 import { Response } from "@/components/ai-elements/response";
 import { ToolApproval } from "@/components/ai-elements/tool-approval";
+import { useAudioRecorder } from "@/hooks/use-audio-recorder";
 import { useChat } from "@ai-sdk/react";
 import { CheckIcon, CopyIcon, RefreshCcwIcon } from "lucide-react";
 import { lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai';
@@ -37,6 +39,26 @@ export const Chat = () => {
   const [input, setInput] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const {
+    state: recorderState,
+    startRecording,
+    stopRecording,
+  } = useAudioRecorder({
+    onTranscriptionComplete: (text) => {
+      // Ignores false single-word transcriptions from silent audio
+      if (text.trim().split(/\s+/).length < 2) return;
+
+      setInput((prev) => {
+        const separator = prev.trim() ? " " : "";
+        return prev + separator + text;
+      });
+      textareaRef.current?.focus();
+    },
+    onError: (error) => {
+      console.error("Recording error:", error);
+    },
+  });
 
   const {
     messages,
@@ -139,6 +161,7 @@ export const Chat = () => {
           className="mb-4"
           globalDrop
           multiple
+          accept="image/*,application/pdf"
         >
           <PromptInputBody>
             <PromptInputAttachments>
@@ -159,6 +182,11 @@ export const Chat = () => {
                   <PromptInputActionAddAttachments />
                 </PromptInputActionMenuContent>
               </PromptInputActionMenu>
+              <RecordButton
+                state={recorderState}
+                onStart={startRecording}
+                onStop={stopRecording}
+              />
             </PromptInputTools>
             <PromptInputSubmit disabled={!input && !status} status={status} />
           </PromptInputToolbar>
