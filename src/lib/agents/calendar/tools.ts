@@ -6,7 +6,7 @@ import {
   updateEvent,
   deleteEvent,
   searchEvents,
-} from "./google-calendar";
+} from "../../google-calendar";
 
 // Get system timezone (e.g., "America/New_York", "Europe/Athens")
 const systemTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;

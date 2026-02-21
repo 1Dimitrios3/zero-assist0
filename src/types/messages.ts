@@ -1,5 +1,5 @@
 import { UIMessage } from "ai";
-import { calendarTools } from "@/lib/calendar-tools";
+import { calendarTools } from "@/lib/agents/calendar/tools";
 
 /**
  * Tool part with approval state - matches AI SDK's tool invocation structure

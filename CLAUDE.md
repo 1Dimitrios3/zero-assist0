@@ -111,3 +111,49 @@ npx tsc --noEmit  # Type check
 - [AI SDK Docs](https://ai-sdk.dev/docs)
 - [Google Calendar API](https://developers.google.com/calendar/api)
 - [Google OAuth 2.0](https://developers.google.com/identity/protocols/oauth2)
+
+
+## First major refactoring to accomodate agentic capapibilites
+# Here's a summary of the refactoring:                                                                     
+                                                                                                                     
+  What was done                                                                                                      
+                                                                                                                     
+  New files created (src/lib/agents/)                                                                                
+                                                                                                                     
+  - types.ts - Core types: AgentRoute, AgentConfig, AgentContext, PreProcessResult, ClassificationResult             
+  - classifier.ts - Intent classifier using gpt-4o-mini to route messages to the right agent                         
+  - registry.ts - Maps routes to agent pipelines (calendar_only → calendar agent, general → general agent, gmail     
+  stubs for future)                                                                                                  
+  - orchestrator.ts - Main orchestrate() function: classifies intent → runs pre-processing → streams with the right  
+  agent config                                                                                                       
+  - calendar/tools.ts - Moved from src/lib/calendar-tools.ts (all 6 tools preserved identically)                     
+  - calendar/conflict-detection.ts - Moved from src/lib/conflict-detection.ts (unchanged)                            
+  - calendar/prompt.ts - Calendar agent config with extracted system prompt from prompts.ts                          
+
+  Modified files
+
+  - src/app/api/chat/route.ts - Simplified from 74 lines to 52 lines; now delegates to orchestrate() instead of
+  inline streamText()
+  - src/app/api/chat/prompts.ts - Reduced to just MODEL_ID and MAX_TOOL_STEPS exports
+  - src/types/messages.ts - Updated import path for calendar tools
+
+  Deleted files
+
+  - src/lib/calendar-tools.ts (moved)
+  - src/lib/conflict-detection.ts (moved)
+
+  Frontend changes
+
+  - None - chat.tsx is completely unchanged
+
+  Build status
+
+  - TypeScript: clean
+  - Build: clean
+  - Lint: only pre-existing warnings/errors (none introduced by this change)
+
+  Adding Gmail agent in the future
+
+  1. Create src/lib/agents/gmail/tools.ts and prompt.ts
+  2. Update registry.ts to map gmail_only and gmail_then_cal to the new agent
+  3. That's it - no changes needed to the orchestrator, route handler, or frontend

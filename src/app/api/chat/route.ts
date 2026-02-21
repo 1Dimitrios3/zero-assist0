@@ -1,18 +1,11 @@
-import { openai } from "@ai-sdk/openai";
 import {
-  convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
   safeValidateUIMessages,
-  streamText,
   UIMessage,
-  stepCountIs
 } from "ai";
-import { calendarTools } from "@/lib/calendar-tools";
-import { isAuthenticated } from "@/lib/google-calendar";
-import { getSystemPrompt, MODEL_ID, MAX_TOOL_STEPS } from "./prompts";
 import { getCompletedToolCallIds, filterSupersededToolParts } from "@/app/utils/message-utils";
-import { checkForSchedulingConflict } from "@/lib/conflict-detection";
+import { orchestrate } from "@/lib/agents/orchestrator";
 
 // Allow streaming responses up to 30 seconds
 export const maxDuration = 30;
@@ -49,21 +42,8 @@ export async function POST(req: Request) {
 
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
-      const googleConnected = isAuthenticated();
-      const modelMessages = await convertToModelMessages(messages);
-      const { hasConflict, conflictContext } =
-        await checkForSchedulingConflict(messages, googleConnected);
-
-      const result = streamText({
-        model: openai(MODEL_ID as string),
-        system: getSystemPrompt(googleConnected) + conflictContext,
-        messages: modelMessages,
-        tools: googleConnected ? calendarTools : undefined,
-        toolChoice: hasConflict ? { type: "tool", toolName: "conflictWarning" } : undefined,
-        stopWhen: stepCountIs(MAX_TOOL_STEPS),
-      });
-
-      writer.merge(result.toUIMessageStream());
+      const { stream: agentStream } = await orchestrate(messages);
+      writer.merge(agentStream.toUIMessageStream());
     },
     generateId: () => crypto.randomUUID(),
   });
