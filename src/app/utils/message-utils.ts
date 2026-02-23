@@ -60,8 +60,12 @@ export function filterSupersededToolParts(
           const toolCallId = part.toolCallId as string;
           const state = part.state as string;
 
-          // Keep if this tool hasn't completed yet
-          if (!completedToolCallIds.has(toolCallId)) return true;
+          // Keep if this tool hasn't completed yet (but still deduplicate)
+          if (!completedToolCallIds.has(toolCallId)) {
+            if (includedToolCallIds.has(toolCallId)) return false;
+            includedToolCallIds.add(toolCallId);
+            return true;
+          }
 
           // For completed tools, only keep final state and only once
           if (FINAL_TOOL_STATES.includes(state)) {

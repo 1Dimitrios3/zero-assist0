@@ -1,55 +1,17 @@
 import { google } from "googleapis";
-import fs from "fs";
-import path from "path";
+import { getOAuth2Client } from "./google-auth";
 
-const TOKEN_PATH = path.join(process.cwd(), "token.json");
-
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI
-);
-
-// Generate auth URL for user consent
-export function getAuthUrl() {
-  return oauth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: ["https://www.googleapis.com/auth/calendar"],
-    prompt: "consent",
-  });
-}
-
-// Exchange code for tokens and save
-export async function getTokensFromCode(code: string) {
-  const { tokens } = await oauth2Client.getToken(code);
-  oauth2Client.setCredentials(tokens);
-  fs.writeFileSync(TOKEN_PATH, JSON.stringify(tokens));
-  return tokens;
-}
-
-// Load saved tokens
-export function loadSavedTokens() {
-  try {
-    if (fs.existsSync(TOKEN_PATH)) {
-      const tokens = JSON.parse(fs.readFileSync(TOKEN_PATH, "utf-8"));
-      oauth2Client.setCredentials(tokens);
-      return true;
-    }
-  } catch {
-    return false;
-  }
-  return false;
-}
-
-// Check if authenticated
-export function isAuthenticated() {
-  return loadSavedTokens();
-}
+// Re-export auth functions for backward compatibility
+export {
+  getAuthUrl,
+  getTokensFromCode,
+  loadSavedTokens,
+  isAuthenticated,
+} from "./google-auth";
 
 // Get authenticated calendar client
 export function getCalendarClient() {
-  loadSavedTokens();
-  return google.calendar({ version: "v3", auth: oauth2Client });
+  return google.calendar({ version: "v3", auth: getOAuth2Client() });
 }
 
 // Calendar API functions
@@ -81,7 +43,11 @@ export async function createEvent(
       useDefault: boolean;
       overrides?: Array<{ method: "email" | "popup"; minutes: number }>;
     };
-    attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+    attendees?: Array<{
+      email: string;
+      displayName?: string;
+      optional?: boolean;
+    }>;
     recurrence?: string[];
   },
   sendUpdates: "all" | "externalOnly" | "none" = "all"
@@ -107,7 +73,11 @@ export async function updateEvent(
       useDefault: boolean;
       overrides?: Array<{ method: "email" | "popup"; minutes: number }>;
     };
-    attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+    attendees?: Array<{
+      email: string;
+      displayName?: string;
+      optional?: boolean;
+    }>;
     recurrence?: string[];
   },
   sendUpdates: "all" | "externalOnly" | "none" = "all"

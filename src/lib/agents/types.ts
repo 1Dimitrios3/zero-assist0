@@ -10,6 +10,10 @@ export type AgentRoute =
 /** Context passed to agent configuration functions */
 export interface AgentContext {
   googleConnected: boolean;
+  calendarConnected: boolean;
+  gmailConnected: boolean;
+  /** Authenticated user's display name from Google profile */
+  userName?: string;
   /** Injected results from a prior agent in a chain */
   priorAgentResult?: string;
   /** Any additional dynamic context (e.g., conflict info) */

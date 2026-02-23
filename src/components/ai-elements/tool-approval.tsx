@@ -13,6 +13,9 @@ import {
   MapPinIcon,
   UsersIcon,
   BellIcon,
+  SendIcon,
+  ReplyIcon,
+  MailIcon,
 } from "lucide-react";
 import type { ChatAddToolApproveResponseFunction } from "ai";
 import { useState } from "react";
@@ -51,9 +54,30 @@ interface CalendarEventInput {
   guests?: Guest[];
 }
 
+interface EmailSendInput {
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string;
+  bcc?: string;
+}
+
+interface EmailReplyInput {
+  messageId: string;
+  threadId: string;
+  to: string;
+  subject: string;
+  body: string;
+  cc?: string;
+}
+
 interface ToolApprovalProps {
   toolName: string;
-  input: CalendarEventInput | ConflictWarningInput;
+  input:
+    | CalendarEventInput
+    | ConflictWarningInput
+    | EmailSendInput
+    | EmailReplyInput;
   approvalId: string;
   addToolApprovalResponse: ChatAddToolApproveResponseFunction;
 }
@@ -83,8 +107,12 @@ function getToolIcon(toolName: string) {
       return <Trash2Icon className="size-5" />;
     case "conflictWarning":
       return <AlertTriangleIcon className="size-5" />;
+    case "sendEmail":
+      return <SendIcon className="size-5" />;
+    case "replyToEmail":
+      return <ReplyIcon className="size-5" />;
     default:
-      return <CalendarIcon className="size-5" />;
+      return <MailIcon className="size-5" />;
   }
 }
 
@@ -98,8 +126,12 @@ function getToolTitle(toolName: string) {
       return "Delete Calendar Event";
     case "conflictWarning":
       return "Scheduling Conflict Detected";
+    case "sendEmail":
+      return "Send Email";
+    case "replyToEmail":
+      return "Reply to Email";
     default:
-      return "Calendar Action";
+      return "Action Required";
   }
 }
 
@@ -113,8 +145,12 @@ function getToolDescription(toolName: string) {
       return "The assistant wants to delete an event from your calendar:";
     case "conflictWarning":
       return "A scheduling conflict was found with existing events:";
+    case "sendEmail":
+      return "The assistant wants to send a new email:";
+    case "replyToEmail":
+      return "The assistant wants to reply to an email:";
     default:
-      return "The assistant wants to perform a calendar action:";
+      return "The assistant wants to perform an action:";
   }
 }
 
@@ -168,6 +204,7 @@ export function ToolApproval({
 
   const isDestructive = toolName === "deleteEvent";
   const isConflict = toolName === "conflictWarning";
+  const isEmailAction = toolName === "sendEmail" || toolName === "replyToEmail";
 
   return (
     <Dialog.Root open={open} onOpenChange={() => {/* Prevent closing on backdrop click */}}>
@@ -189,7 +226,48 @@ export function ToolApproval({
           </Dialog.Description>
 
           <div className="mt-4 space-y-3 rounded-md bg-muted p-4">
-            {isConflict ? (
+            {isEmailAction ? (
+              <>
+                {"to" in input && (
+                  <div className="flex items-center gap-2">
+                    <UsersIcon className="size-4 text-muted-foreground" />
+                    <p className="text-sm">
+                      <span className="font-medium">To:</span>{" "}
+                      {(input as EmailSendInput).to}
+                    </p>
+                  </div>
+                )}
+                {"cc" in input && (input as EmailSendInput).cc && (
+                  <div className="flex items-center gap-2">
+                    <UsersIcon className="size-4 text-muted-foreground" />
+                    <p className="text-sm">
+                      <span className="font-medium">CC:</span>{" "}
+                      {(input as EmailSendInput).cc}
+                    </p>
+                  </div>
+                )}
+                {"subject" in input && (
+                  <div className="flex items-center gap-2">
+                    <MailIcon className="size-4 text-muted-foreground" />
+                    <p className="text-sm">
+                      <span className="font-medium">Subject:</span>{" "}
+                      {(input as EmailSendInput).subject}
+                    </p>
+                  </div>
+                )}
+                {"body" in input && (
+                  <div className="flex items-start gap-2">
+                    <MailIcon className="mt-0.5 size-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p className="font-medium">Body:</p>
+                      <p className="whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                        {(input as EmailSendInput).body}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : isConflict ? (
               <>
                 <p className="text-sm">{(input as ConflictWarningInput).summary}</p>
                 {(input as ConflictWarningInput).conflictingEvents.map((event, i) => (
@@ -206,7 +284,7 @@ export function ToolApproval({
               </>
             ) : (
               <>
-                {input.summary && (
+                {"summary" in input && input.summary && (
                   <div className="flex items-start gap-2">
                     <CalendarIcon className="mt-0.5 size-4 text-muted-foreground" />
                     <div>

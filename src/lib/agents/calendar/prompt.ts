@@ -1,4 +1,5 @@
 import type { AgentConfig } from "../types";
+import { getCurrentDateInfo } from "../utils";
 import { calendarTools } from "./tools";
 import { checkForSchedulingConflict } from "./conflict-detection";
 
@@ -28,20 +29,6 @@ IMPORTANT: The system automatically checks for scheduling conflicts before event
 Format dates and times clearly when displaying information to the user.
 If the user hasn't connected their Google Calendar yet, let them know they need to visit /api/auth/google to connect it.`;
 
-function getCurrentDateInfo(): string {
-  const now = new Date();
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  };
-  const formattedDate = now.toLocaleDateString("en-US", options);
-  const isoDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return `Current date: ${formattedDate} (${isoDate})\nUser's timezone: ${timeZone}`;
-}
-
 export const calendarAgentConfig: AgentConfig = {
   id: "calendar",
   name: "Calendar Agent",
@@ -50,13 +37,21 @@ export const calendarAgentConfig: AgentConfig = {
     const dateInfo = getCurrentDateInfo();
     let prompt = `${baseSystemPrompt}\n\n${dateInfo}`;
 
-    if (!context.googleConnected) {
+    if (!context.calendarConnected) {
       prompt +=
         "\n\nNote: Google Calendar is not connected yet. Ask the user to visit /api/auth/google to connect it.";
     }
 
     if (context.priorAgentResult) {
-      prompt += `\n\nContext from previous step:\n${context.priorAgentResult}`;
+      prompt += `\n\nIMPORTANT — CHAINED PIPELINE CONTEXT:
+The information below was gathered by a prior agent (e.g., from the user's emails) as part of a coordinated pipeline. The data has ALREADY been retrieved on your behalf. You MUST:
+1. Present these findings to the user directly and naturally — do NOT say you cannot access emails or disclaim access to any service. The retrieval already happened.
+2. If the findings contain meeting suggestions, proposed times, or actionable items, offer to create calendar events for them.
+3. Do NOT search the calendar for this information — it came from another source.
+4. If no specific time is mentioned, ask the user what time they'd like to schedule.
+
+Prior agent output:
+${context.priorAgentResult}`;
     }
 
     if (context.additionalContext) {
@@ -67,13 +62,13 @@ export const calendarAgentConfig: AgentConfig = {
   },
 
   getTools: (context) => {
-    return context.googleConnected ? calendarTools : undefined;
+    return context.calendarConnected ? calendarTools : undefined;
   },
 
   preProcess: async (context, { messages }) => {
     const { hasConflict, conflictContext } = await checkForSchedulingConflict(
       messages,
-      context.googleConnected
+      context.calendarConnected
     );
 
     return {

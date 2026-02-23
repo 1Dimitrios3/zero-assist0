@@ -23,9 +23,10 @@ const listEventsSchema = z.object({
     .describe("End time in ISO format (optional)"),
   maxResults: z
     .number()
+    .max(50)
     .optional()
     .default(10)
-    .describe("Maximum number of events to return"),
+    .describe("Maximum number of events to return (default 10, max 50)"),
 });
 
 const reminderSchema = z.object({
@@ -184,9 +185,10 @@ const searchEventsSchema = z.object({
   query: z.string().describe("Search query to find events"),
   maxResults: z
     .number()
+    .max(50)
     .optional()
     .default(10)
-    .describe("Maximum number of events to return"),
+    .describe("Maximum number of events to return (default 10, max 50)"),
 });
 
 export const calendarTools = {

@@ -1,24 +1,19 @@
 import type { AgentConfig, AgentRoute } from "./types";
+import { getCurrentDateInfo } from "./utils";
 import { calendarAgentConfig } from "./calendar/prompt";
+import { emailAgentConfig } from "./email/prompt";
 
 const generalAgentConfig: AgentConfig = {
   id: "general",
   name: "General Assistant",
   getSystemPrompt: () => {
-    const now = new Date();
-    const options: Intl.DateTimeFormatOptions = {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    };
-    const formattedDate = now.toLocaleDateString("en-US", options);
+    const dateInfo = getCurrentDateInfo();
 
     return `You are a helpful AI assistant. You can help with general questions and conversation.
 
-Current date: ${formattedDate}
+${dateInfo}
 
-You have access to calendar management capabilities. If the user asks about email/Gmail features, let them know that email integration is coming soon.`;
+You have access to calendar and email capabilities. If the user asks about calendar or email features, let them know they can connect their Google account at /api/auth/google.`;
   },
   getTools: () => undefined,
 };
@@ -27,9 +22,8 @@ You have access to calendar management capabilities. If the user asks about emai
 const routeMap: Record<AgentRoute, AgentConfig[]> = {
   calendar_only: [calendarAgentConfig],
   general: [generalAgentConfig],
-  // Stubs until Gmail agent is implemented
-  gmail_only: [generalAgentConfig],
-  gmail_then_cal: [generalAgentConfig],
+  gmail_only: [emailAgentConfig],
+  gmail_then_cal: [emailAgentConfig, calendarAgentConfig],
 };
 
 export function getAgentPipeline(route: AgentRoute): AgentConfig[] {

@@ -1,159 +1,109 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## Overview
 
-## Google Calendar Setup Guide
+Zero Assist is a multi-agent AI assistant with Google Calendar and Gmail integration. It uses an orchestrator/router pattern: user messages are classified by intent, then routed to the appropriate agent (or agent chain) for execution.
 
-### Step 1: Create Google Cloud Project
+## Setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Click **Select a project** → **New Project**
-3. Enter a project name (e.g., "Zero Assist") → **Create**
+### 1. Google Cloud Project
 
-### Step 2: Enable Google Calendar API
+1. [Google Cloud Console](https://console.cloud.google.com/) → **New Project**
+2. **APIs & Services** → **Library** → Enable **Google Calendar API** and **Gmail API**
+3. **OAuth consent screen** → External → Add scopes:
+   - `https://www.googleapis.com/auth/calendar`
+   - `https://www.googleapis.com/auth/gmail.readonly`
+   - `https://www.googleapis.com/auth/gmail.compose`
+4. Add your email as a test user
+5. **Credentials** → **OAuth client ID** (Web application) → Redirect URI: `http://localhost:3000/api/auth/google/callback`
 
-1. Go to **APIs & Services** → **Library**
-2. Search for "Google Calendar API"
-3. Click on it → **Enable**
-
-### Step 3: Configure OAuth Consent Screen
-
-1. Go to **APIs & Services** → **OAuth consent screen**
-2. Select **External** → **Create**
-3. Fill in required fields:
-   - App name: "Zero Assist" (or your app name)
-   - User support email: your email
-   - Developer contact email: your email
-4. Click **Save and Continue**
-5. On **Scopes** page, click **Add or Remove Scopes** (Optional)
-6. Add scope: `https://www.googleapis.com/auth/calendar` (Optional)
-7. Click **Save and Continue**
-8. On **Audience** page, click **Add Users**
-9. Add your email address as a test user
-10. Click **Save and Continue**
-
-### Step 4: Create OAuth Credentials
-
-1. Go to **APIs & Services** → **Credentials**
-2. Click **+ Create Credentials** → **OAuth client ID**
-3. Select **Web application**
-4. Name: "Zero Assist Web Client"
-5. Under **Authorized redirect URIs**, add:
-   ```
-   http://localhost:3000/api/auth/google/callback
-   ```
-6. Click **Create**
-7. Copy the **Client ID** and **Client Secret**
-
-### Step 5: Configure Environment Variables
-
-Add to your `.env` file:
+### 2. Environment Variables
 
 ```env
-GOOGLE_CLIENT_ID=your-client-id-here
-GOOGLE_CLIENT_SECRET=your-client-secret-here
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
-MODEL_ID=the_model_id_of_your_preference
-OPENAI_API_KEY=or_your_provider_of_preference
+GMAIL_USER_ID=me
+MODEL_ID=gpt-4o-mini
+OPENAI_API_KEY=your-key
 ```
 
-### Step 6: Connect Your Google Calendar
+### 3. Connect Google Account
 
-1. Start the app: `pnpm dev`
-2. Visit: http://localhost:3000/api/auth/google
-3. Google will show a consent screen (may show "unverified app" warning)
-4. Click **Advanced** → **Go to [app name] (unsafe)**
-5. Grant calendar permissions
-6. You'll be redirected back with `?success=google_connected`
+1. `pnpm dev`
+2. Visit http://localhost:3000/api/auth/google
+3. Grant calendar and Gmail permissions
+4. Redirected back with `?success=google_connected`
 
-### Usage
+To re-authenticate: delete `token.json` and repeat step 2-3.
 
-Once connected, you can ask the AI:
-- "What's on my calendar today?"
-- "Show me my events for this week"
-- "Schedule a meeting tomorrow at 2pm called Team Standup"
-- "Update my 3pm meeting to 4pm"
-- "Delete my dentist appointment"
-- "Search for meetings with John"
-- "Create a meeting with a 10 minute reminder"
-- "Schedule a call and invite john@example.com"
-- "Create a daily standup at 9am for the next 5 occurrences"
-- "Schedule a weekly team sync every Monday and Thursday at 12pm for the whole year"
+## Usage
 
-## Voice Input
+**Calendar**: "What's on my calendar today?", "Schedule a meeting tomorrow at 2pm", "Delete my dentist appointment"
 
-The app supports voice input via browser microphone recording, transcribed using OpenAI's Whisper model. Audio is captured as WebM/MP4 (depending on browser support), sent as multipart form data to the transcription endpoint, and the resulting text is inserted into the chat input.
+**Email**: "Show me my recent emails", "Send an email to john@example.com", "Reply to that email"
 
-## Development Commands
+**Cross-agent**: "Check my emails from John and schedule any meetings he mentions"
+
+**Voice**: Microphone input transcribed via OpenAI Whisper.
+
+## Development
 
 ```bash
-pnpm dev          # Start dev server with Turbopack
-pnpm build        # Build for production
-pnpm lint         # Run ESLint
+pnpm dev          # Dev server (Turbopack)
+pnpm build        # Production build
+pnpm lint         # ESLint
 npx tsc --noEmit  # Type check
 ```
 
 ## Architecture
 
-- **`/src/app/api/chat/route.ts`** - Chat API with calendar tools
-- **`/src/app/api/chat/prompts.ts`** - System prompt and constants
-- **`/src/app/api/transcribe/route.ts`** - Audio transcription endpoint (Whisper)
-- **`/src/app/api/auth/google/`** - OAuth flow endpoints
-- **`/src/lib/google-calendar.ts`** - Google Calendar API wrapper
-- **`/src/lib/calendar-tools.ts`** - AI SDK tool definitions
-- **`/src/hooks/use-audio-recorder.ts`** - Audio recording and transcription hook
-- **`/src/app/chat.tsx`** - Chat UI component
-- **`/src/app/utils/message-utils.ts`** - Message filtering helpers
-- **`/src/types/messages.ts`** - Type definitions for messages
+```
+User Message → POST /api/chat → orchestrate(messages)
+  │
+  ├─ Phase 1: classifyIntent() → gpt-4o-mini determines route
+  │    Routes: calendar_only | gmail_only | gmail_then_cal | general
+  │    Uses last user message + recent conversation context
+  │
+  ├─ Phase 2: Execute pipeline
+  │    Single agent:  streamText() with agent's prompt + tools
+  │    Chained (gmail_then_cal): email agent runs headlessly via
+  │      generateText(), output passed as context to calendar agent
+  │
+  └─ Response streamed to frontend (tool approvals via needsApproval)
+```
+
+### Key Files
+
+| Path | Purpose |
+|------|---------|
+| `src/lib/agents/orchestrator.ts` | Main orchestrate() — classify, chain, stream |
+| `src/lib/agents/classifier.ts` | Intent classification (gpt-4o-mini) |
+| `src/lib/agents/registry.ts` | Route → agent pipeline mapping |
+| `src/lib/agents/types.ts` | AgentRoute, AgentConfig, AgentContext |
+| `src/lib/agents/utils.ts` | Shared helpers (getCurrentDateInfo) |
+| `src/lib/agents/calendar/` | Calendar agent: tools (6), prompt, conflict-detection |
+| `src/lib/agents/email/` | Email agent: tools (5), prompt |
+| `src/lib/google-auth.ts` | Shared OAuth2 (scopes, tokens, per-service checks) |
+| `src/lib/google-calendar.ts` | Calendar API wrapper |
+| `src/lib/google-gmail.ts` | Gmail API wrapper |
+| `src/app/api/chat/route.ts` | Chat endpoint — delegates to orchestrator |
+| `src/app/chat.tsx` | Frontend chat UI |
+| `src/components/ai-elements/tool-approval.tsx` | Approval dialogs (calendar + email) |
+
+### Agent Design
+
+Each agent implements `AgentConfig`: `getSystemPrompt(context)`, `getTools(context)`, optional `preProcess()`.
+
+- **Calendar**: 6 tools (list, create, update, delete, search, conflictWarning). Pre-processes for scheduling conflict detection. Tools needing approval: create, update, delete, conflictWarning.
+- **Email**: 5 tools (listEmails, readEmail, searchEmails, sendEmail, replyToEmail). Tools needing approval: sendEmail, replyToEmail.
+- **General**: No tools, conversational fallback.
+
+Auth is per-service: `calendarConnected` and `gmailConnected` check actual token scopes, so an old token without Gmail scopes won't enable email tools.
 
 ## References
 
 - [AI SDK Docs](https://ai-sdk.dev/docs)
 - [Google Calendar API](https://developers.google.com/calendar/api)
+- [Gmail API](https://developers.google.com/gmail/api)
 - [Google OAuth 2.0](https://developers.google.com/identity/protocols/oauth2)
-
-
-## First major refactoring to accomodate agentic capapibilites
-# Here's a summary of the refactoring:                                                                     
-                                                                                                                     
-  What was done                                                                                                      
-                                                                                                                     
-  New files created (src/lib/agents/)                                                                                
-                                                                                                                     
-  - types.ts - Core types: AgentRoute, AgentConfig, AgentContext, PreProcessResult, ClassificationResult             
-  - classifier.ts - Intent classifier using gpt-4o-mini to route messages to the right agent                         
-  - registry.ts - Maps routes to agent pipelines (calendar_only → calendar agent, general → general agent, gmail     
-  stubs for future)                                                                                                  
-  - orchestrator.ts - Main orchestrate() function: classifies intent → runs pre-processing → streams with the right  
-  agent config                                                                                                       
-  - calendar/tools.ts - Moved from src/lib/calendar-tools.ts (all 6 tools preserved identically)                     
-  - calendar/conflict-detection.ts - Moved from src/lib/conflict-detection.ts (unchanged)                            
-  - calendar/prompt.ts - Calendar agent config with extracted system prompt from prompts.ts                          
-
-  Modified files
-
-  - src/app/api/chat/route.ts - Simplified from 74 lines to 52 lines; now delegates to orchestrate() instead of
-  inline streamText()
-  - src/app/api/chat/prompts.ts - Reduced to just MODEL_ID and MAX_TOOL_STEPS exports
-  - src/types/messages.ts - Updated import path for calendar tools
-
-  Deleted files
-
-  - src/lib/calendar-tools.ts (moved)
-  - src/lib/conflict-detection.ts (moved)
-
-  Frontend changes
-
-  - None - chat.tsx is completely unchanged
-
-  Build status
-
-  - TypeScript: clean
-  - Build: clean
-  - Lint: only pre-existing warnings/errors (none introduced by this change)
-
-  Adding Gmail agent in the future
-
-  1. Create src/lib/agents/gmail/tools.ts and prompt.ts
-  2. Update registry.ts to map gmail_only and gmail_then_cal to the new agent
-  3. That's it - no changes needed to the orchestrator, route handler, or frontend

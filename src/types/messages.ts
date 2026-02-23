@@ -1,5 +1,6 @@
 import { UIMessage } from "ai";
 import { calendarTools } from "@/lib/agents/calendar/tools";
+import { emailTools } from "@/lib/agents/email/tools";
 
 /**
  * Tool part with approval state - matches AI SDK's tool invocation structure
@@ -51,6 +52,8 @@ export function needsApproval(part: ToolInvocationPart): boolean {
  * Available calendar tool names
  */
 export type CalendarToolName = keyof typeof calendarTools;
+export type EmailToolName = keyof typeof emailTools;
+export type AllToolName = CalendarToolName | EmailToolName;
 
 /**
  * Custom message type with better typing for parts

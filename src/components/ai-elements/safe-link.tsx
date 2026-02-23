@@ -35,7 +35,7 @@ export const SafeLink = memo(
       return (
         <a
           className={cn(
-            "font-medium text-primary underline break-words",
+            "font-medium text-link underline break-words",
             className
           )}
           href={href}
@@ -60,7 +60,7 @@ export const SafeLink = memo(
               }
             }}
             className={cn(
-              "font-medium text-primary underline break-words cursor-pointer",
+              "font-medium text-link underline break-words cursor-pointer",
               className
             )}
             data-incomplete={isIncomplete}

@@ -17,17 +17,22 @@ const eventIntentSchema = z.object({
     .describe(
       "Whether the user is requesting to create/schedule a new calendar event"
     ),
+  isDeleteEvent: z
+    .boolean()
+    .describe(
+      "Whether the user is requesting to delete/remove/cancel one or more calendar events"
+    ),
   proposedStartTime: z
     .string()
     .nullable()
     .describe(
-      "The proposed start time in ISO 8601 format, if detectable from the message. Null if not detectable."
+      "The proposed start time in ISO 8601 format, if detectable from the message. For delete requests targeting a whole day, use the start of that day. Null if not detectable."
     ),
   proposedEndTime: z
     .string()
     .nullable()
     .describe(
-      "The proposed end time in ISO 8601 format, if detectable. If only start time is mentioned, assume 1 hour duration. Null if not detectable."
+      "The proposed end time in ISO 8601 format, if detectable. For create: if only start time is mentioned, assume 1 hour duration. For delete: if a whole day is mentioned, use the end of that day (23:59:59). Null if not detectable."
     ),
 });
 
@@ -57,7 +62,7 @@ export const extractEventIntent = async (
   const result = await generateText({
     model: openai("gpt-4o-mini"),
     output: Output.object({ schema: eventIntentSchema }),
-    prompt: `You are analyzing a user message to determine if they want to create or schedule a new calendar event.
+    prompt: `You are analyzing a user message to determine their calendar intent.
 
 Current date/time: ${currentDate}
 User's timezone: ${timeZone}
@@ -66,8 +71,11 @@ User message: "${userMessage}"
 
 Determine:
 1. Is this a request to CREATE or SCHEDULE a new event? (not list, search, update, or delete)
-2. If yes, extract the proposed start and end times in ISO 8601 format with the correct timezone offset for ${timeZone}. For example, if the timezone is Europe/Athens (UTC+2), "10am" should be "2026-02-15T10:00:00+02:00", NOT "2026-02-15T10:00:00Z".
-3. If only a start time is mentioned, assume a 1-hour duration.
+2. Is this a request to DELETE, REMOVE, or CANCEL one or more existing calendar events?
+3. Extract the relevant time range in ISO 8601 format with the correct timezone offset for ${timeZone}.
+   - For CREATE: extract start and end times. If only start is mentioned, assume 1-hour duration.
+   - For DELETE: extract the date or time range the user refers to. For a whole day (e.g., "events on Jan 16th"), use the start of that day (00:00:00) and end of that day (23:59:59).
+   - For example, if the timezone is Europe/Athens (UTC+2), "10am" should be "2026-01-15T10:00:00+02:00", NOT "2026-01-15T10:00:00Z".
 4. If times cannot be determined, set them to null.`,
   });
 
@@ -81,6 +89,7 @@ export const getExistingEvents = async (
   const events = await listEvents(proposedStart, proposedEnd);
 
   return events.map((event: any) => ({
+    id: event.id as string,
     title: event.summary || "Untitled Event",
     start: event.start?.dateTime || event.start?.date,
     end: event.end?.dateTime || event.end?.date,
@@ -227,6 +236,22 @@ function buildConflictDetectedContext(
 }
 
 /**
+ * Builds the system-prompt context string that provides the LLM with
+ * pre-fetched events for a delete request, including event IDs.
+ */
+function buildDeleteEventsContext(
+  events: Array<{ id: string; title: string; start: string; end: string }>
+): string {
+  const eventsJson = JSON.stringify(events, null, 2);
+  return `\n\n<events-for-deletion>
+The user wants to delete events. The following events were found in the requested time range:
+${eventsJson}
+Use the deleteEvent tool with the event IDs listed above. Call deleteEvent for each event the user wants to delete.
+If the user asked to delete ALL events in this range, delete every one of them.
+</events-for-deletion>`;
+}
+
+/**
  * High-level function that encapsulates all conflict detection logic.
  *
  * It determines whether the user is creating a new event, checks for
@@ -257,9 +282,10 @@ export async function checkForSchedulingConflict(
       try {
         const currentDate = new Date().toISOString();
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const { isCreateEvent, proposedStartTime, proposedEndTime } =
+        const { isCreateEvent, isDeleteEvent, proposedStartTime, proposedEndTime } =
           await extractEventIntent(userText, currentDate, timeZone);
         console.log('intent.isCreateEvent ---<><><>', isCreateEvent)
+        console.log('intent.isDeleteEvent ---<><><>', isDeleteEvent)
 
         if (
           isCreateEvent &&
@@ -288,6 +314,20 @@ export async function checkForSchedulingConflict(
                 conflictResult.conflictingEvents ?? []
               );
             }
+          }
+        } else if (
+          isDeleteEvent &&
+          proposedStartTime &&
+          proposedEndTime
+        ) {
+          const existingEvents = await getExistingEvents(
+            proposedStartTime,
+            proposedEndTime
+          );
+          console.log('existingEvents (delete) >>>>>>>>>>', existingEvents)
+
+          if (existingEvents.length > 0) {
+            conflictContext = buildDeleteEventsContext(existingEvents);
           }
         }
       } catch (error) {
