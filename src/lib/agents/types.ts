@@ -5,6 +5,10 @@ export type AgentRoute =
   | "calendar_only"
   | "gmail_only"
   | "gmail_then_cal"
+  | "docs_only"
+  | "gmail_then_docs"
+  | "docs_then_gmail"
+  | "docs_then_cal"
   | "general";
 
 /** Context passed to agent configuration functions */
@@ -12,6 +16,7 @@ export interface AgentContext {
   googleConnected: boolean;
   calendarConnected: boolean;
   gmailConnected: boolean;
+  docsConnected: boolean;
   /** Authenticated user's display name from Google profile */
   userName?: string;
   /** Injected results from a prior agent in a chain */

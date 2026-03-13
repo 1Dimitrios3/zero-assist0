@@ -11,7 +11,17 @@ import { getAgentPipeline, getAvailableRoutes } from "./registry";
 import { isAuthenticated, getGrantedServices, getUserName } from "../google-auth";
 import { MODEL_ID, MAX_TOOL_STEPS } from "@/app/api/chat/prompts";
 import type { AgentContext } from "./types";
-import { stripToolPartsFromMessages, deduplicateModelMessages } from "./utils";
+import {
+  stripToolPartsFromMessages,
+  deduplicateModelMessages,
+  extractDocMetadataFromSteps,
+  stripToolApprovals,
+  recoverDocMetadata,
+  getRecentContext,
+  hasDocContextInConversation,
+  isToolApprovalContinuation,
+  getLastUserText,
+} from "./utils";
 
 export interface OrchestratorResult {
   stream: ReturnType<typeof streamText>;
@@ -33,7 +43,7 @@ export async function orchestrate(
   const googleConnected = isAuthenticated();
   const services = googleConnected
     ? getGrantedServices()
-    : { calendar: false, gmail: false };
+    : { calendar: false, gmail: false, docs: false };
 
   // --- Phase 1: Classify Intent ---
   const lastUserText = getLastUserText(messages);
@@ -53,6 +63,7 @@ export async function orchestrate(
     googleConnected,
     calendarConnected: services.calendar,
     gmailConnected: services.gmail,
+    docsConnected: services.docs,
     userName: userName ?? undefined,
   };
 
@@ -60,23 +71,69 @@ export async function orchestrate(
   let forceToolChoice: { type: "tool"; toolName: string } | undefined;
 
   // Execute non-final agents headlessly FIRST (for chained pipelines like gmail_then_cal)
-  // This must happen before preProcess so the final agent has full context
-  if (pipeline.length > 1) {
+  // This must happen before preProcess so the final agent has full context.
+  // Skip if this is a tool-approval continuation (assistant already responded
+  // after the last user message) — headless agents have already run.
+  const approvalContinuation = isToolApprovalContinuation(messages);
+  if (approvalContinuation) {
+    console.log("[orchestrator] skipping headless agents (approval continuation)");
+
+    // Recover doc metadata for the final agent's context — headless results
+    // are ephemeral and lost between requests. Fetch the most recently modified
+    // doc so the final agent still has the webViewLink.
+    if (pipeline.length > 1 && pipeline.some((a) => a.id === "docs") && services.docs) {
+      const docMeta = await recoverDocMetadata();
+      if (docMeta) {
+        context.priorAgentResult = docMeta;
+      }
+    }
+  }
+
+  // Recover doc metadata for single-agent calendar routes that follow a
+  // chained docs_then_cal pipeline (e.g., user provides a new time after
+  // a conflict rejection). The doc link is ephemeral and lost between
+  // requests, so we re-fetch the most recent doc.
+  if (
+    pipeline.length === 1 &&
+    finalAgent.id === "calendar" &&
+    services.docs &&
+    !approvalContinuation &&
+    hasDocContextInConversation(messages)
+  ) {
+    const docMeta = await recoverDocMetadata();
+    if (docMeta) {
+      context.priorAgentResult = docMeta;
+      console.log("[orchestrator] recovered doc metadata for calendar follow-up");
+    }
+  }
+
+  if (pipeline.length > 1 && !approvalContinuation) {
     const textOnlyMessages = stripToolPartsFromMessages(messages);
 
     for (let i = 0; i < pipeline.length - 1; i++) {
       const agent = pipeline[i];
+
       try {
-        const headlessMessages = await convertToModelMessages(textOnlyMessages);
+        const rawHeadlessMessages = await convertToModelMessages(textOnlyMessages);
+        const headlessMessages = deduplicateModelMessages(rawHeadlessMessages);
         const result = await generateText({
           model: openai(MODEL_ID as string),
           system: agent.getSystemPrompt(context),
           messages: headlessMessages,
-          tools: agent.getTools(context),
+          tools: stripToolApprovals(agent.getTools(context)),
           stopWhen: stepCountIs(MAX_TOOL_STEPS),
         });
         // Feed result into next agent as context
         context.priorAgentResult = result.text;
+
+        // Append structured doc metadata so the next agent has reliable
+        // access to document links (LLM text output may omit them)
+        if (agent.id === "docs") {
+          const docMeta = extractDocMetadataFromSteps(result.steps);
+          if (docMeta) {
+            context.priorAgentResult += docMeta;
+          }
+        }
       } catch (error) {
         console.error(`[orchestrator] Headless agent "${agent.id}" failed:`, error);
         context.priorAgentResult = `[The ${agent.name} encountered an error and could not complete its task. Please let the user know and suggest they try again.]`;
@@ -84,11 +141,11 @@ export async function orchestrate(
     }
   }
 
-  // Run pre-processing for the final agent (e.g., conflict detection)
-  // Skipped for chained pipelines — event details come from prior agent output,
-  // not from the user message. Conflict detection runs on the follow-up request
-  // when the user explicitly asks to book/create the event (a calendar_only route).
-  if (finalAgent.preProcess && pipeline.length === 1) {
+  // Run pre-processing for the final agent (e.g., conflict detection).
+  // Runs for both single-agent and chained pipelines — the user may specify
+  // event times directly even in chained requests (e.g., "create a doc and
+  // schedule an event at 1pm").
+  if (finalAgent.preProcess) {
     const preResult = await finalAgent.preProcess(context, { messages });
     context.additionalContext = preResult.additionalContext;
     forceToolChoice = preResult.forceToolChoice;
@@ -108,48 +165,4 @@ export async function orchestrate(
   });
 
   return { stream };
-}
-
-/**
- * Extracts recent conversation context (last few exchanges) for the classifier.
- * Returns a summary of the last 2-3 user/assistant text exchanges.
- */
-function getRecentContext(messages: UIMessage[]): string | undefined {
-  const recent: string[] = [];
-  let count = 0;
-
-  // Walk backwards, collect up to 3 recent text exchanges (excluding the last user message)
-  for (let i = messages.length - 2; i >= 0 && count < 3; i--) {
-    const msg = messages[i];
-    const textParts = msg.parts
-      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join(" ");
-
-    if (textParts) {
-      recent.unshift(`${msg.role}: ${textParts.slice(0, 300)}`);
-      count++;
-    }
-  }
-
-  return recent.length > 0 ? recent.join("\n") : undefined;
-}
-
-/**
- * Extracts the text content from the last user message.
- */
-function getLastUserText(messages: UIMessage[]): string | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === "user") {
-      return (
-        messages[i].parts
-          ?.filter(
-            (p): p is { type: "text"; text: string } => p.type === "text"
-          )
-          .map((p) => p.text)
-          .join(" ") ?? null
-      );
-    }
-  }
-  return null;
 }

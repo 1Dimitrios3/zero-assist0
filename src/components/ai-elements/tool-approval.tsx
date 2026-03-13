@@ -16,6 +16,9 @@ import {
   SendIcon,
   ReplyIcon,
   MailIcon,
+  FileTextIcon,
+  FilePenIcon,
+  FileEditIcon,
 } from "lucide-react";
 import type { ChatAddToolApproveResponseFunction } from "ai";
 import { useState } from "react";
@@ -71,13 +74,31 @@ interface EmailReplyInput {
   cc?: string;
 }
 
+interface DocCreateInput {
+  title: string;
+  content?: string;
+}
+
+interface DocAppendInput {
+  documentId: string;
+  text: string;
+}
+
+interface DocEditInput {
+  documentId: string;
+  edits: Array<{ find: string; replace: string; matchCase?: boolean }>;
+}
+
 interface ToolApprovalProps {
   toolName: string;
   input:
     | CalendarEventInput
     | ConflictWarningInput
     | EmailSendInput
-    | EmailReplyInput;
+    | EmailReplyInput
+    | DocCreateInput
+    | DocAppendInput
+    | DocEditInput;
   approvalId: string;
   addToolApprovalResponse: ChatAddToolApproveResponseFunction;
 }
@@ -111,6 +132,12 @@ function getToolIcon(toolName: string) {
       return <SendIcon className="size-5" />;
     case "replyToEmail":
       return <ReplyIcon className="size-5" />;
+    case "createDoc":
+      return <FileTextIcon className="size-5" />;
+    case "appendToDoc":
+      return <FilePenIcon className="size-5" />;
+    case "editDoc":
+      return <FileEditIcon className="size-5" />;
     default:
       return <MailIcon className="size-5" />;
   }
@@ -130,6 +157,12 @@ function getToolTitle(toolName: string) {
       return "Send Email";
     case "replyToEmail":
       return "Reply to Email";
+    case "createDoc":
+      return "Create Google Doc";
+    case "appendToDoc":
+      return "Append to Google Doc";
+    case "editDoc":
+      return "Edit Google Doc";
     default:
       return "Action Required";
   }
@@ -149,6 +182,12 @@ function getToolDescription(toolName: string) {
       return "The assistant wants to send a new email:";
     case "replyToEmail":
       return "The assistant wants to reply to an email:";
+    case "createDoc":
+      return "The assistant wants to create a new Google Doc:";
+    case "appendToDoc":
+      return "The assistant wants to add content to a Google Doc:";
+    case "editDoc":
+      return "The assistant wants to edit a Google Doc:";
     default:
       return "The assistant wants to perform an action:";
   }
@@ -205,6 +244,7 @@ export function ToolApproval({
   const isDestructive = toolName === "deleteEvent";
   const isConflict = toolName === "conflictWarning";
   const isEmailAction = toolName === "sendEmail" || toolName === "replyToEmail";
+  const isDocsAction = toolName === "createDoc" || toolName === "appendToDoc" || toolName === "editDoc";
 
   return (
     <Dialog.Root open={open} onOpenChange={() => {/* Prevent closing on backdrop click */}}>
@@ -226,7 +266,63 @@ export function ToolApproval({
           </Dialog.Description>
 
           <div className="mt-4 space-y-3 rounded-md bg-muted p-4">
-            {isEmailAction ? (
+            {isDocsAction ? (
+              <>
+                {"title" in input && (
+                  <div className="flex items-center gap-2">
+                    <FileTextIcon className="size-4 text-muted-foreground" />
+                    <p className="text-sm">
+                      <span className="font-medium">Title:</span>{" "}
+                      {(input as DocCreateInput).title}
+                    </p>
+                  </div>
+                )}
+                {"content" in input && (input as DocCreateInput).content && (
+                  <div className="flex items-start gap-2">
+                    <FileTextIcon className="mt-0.5 size-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p className="font-medium">Content:</p>
+                      <p className="whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                        {(input as DocCreateInput).content}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {"text" in input && (
+                  <div className="flex items-start gap-2">
+                    <FilePenIcon className="mt-0.5 size-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p className="font-medium">Content to append:</p>
+                      <p className="whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                        {(input as DocAppendInput).text}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {"edits" in input && (
+                  <div className="flex items-start gap-2">
+                    <FileEditIcon className="mt-0.5 size-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      <p className="font-medium">Changes:</p>
+                      <ul className="list-inside list-disc space-y-1">
+                        {(input as DocEditInput).edits.map((edit, i) => (
+                          <li key={i} className="text-muted-foreground">
+                            <span className="line-through">{edit.find}</span>
+                            {" → "}
+                            <span className="font-medium text-foreground">{edit.replace}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+                {"documentId" in input && (input as DocAppendInput | DocEditInput).documentId && (
+                  <div className="text-xs text-muted-foreground">
+                    Document ID: {(input as DocAppendInput | DocEditInput).documentId}
+                  </div>
+                )}
+              </>
+            ) : isEmailAction ? (
               <>
                 {"to" in input && (
                   <div className="flex items-center gap-2">
@@ -260,7 +356,7 @@ export function ToolApproval({
                     <MailIcon className="mt-0.5 size-4 text-muted-foreground" />
                     <div className="text-sm">
                       <p className="font-medium">Body:</p>
-                      <p className="whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                      <p className="whitespace-pre-wrap break-all text-muted-foreground max-h-40 overflow-y-auto">
                         {(input as EmailSendInput).body}
                       </p>
                     </div>
@@ -290,7 +386,7 @@ export function ToolApproval({
                     <div>
                       <p className="text-sm font-medium">{input.summary}</p>
                       {"description" in input && input.description && (
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm break-all text-muted-foreground">
                           {input.description}
                         </p>
                       )}

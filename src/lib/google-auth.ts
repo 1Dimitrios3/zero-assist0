@@ -4,11 +4,13 @@ import path from "path";
 
 const TOKEN_PATH = path.join(process.cwd(), "token.json");
 
-// Scopes for Calendar, Gmail, and user profile (for display name in emails)
+// Scopes for Calendar, Gmail, Docs, and user profile (for display name in emails)
 const SCOPES = [
   "https://www.googleapis.com/auth/calendar",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/documents",
+  "https://www.googleapis.com/auth/drive.readonly",
   "profile",
 ];
 
@@ -62,10 +64,11 @@ export function isAuthenticated() {
 export function getGrantedServices(): {
   calendar: boolean;
   gmail: boolean;
+  docs: boolean;
 } {
   try {
     if (!fs.existsSync(TOKEN_PATH)) {
-      return { calendar: false, gmail: false };
+      return { calendar: false, gmail: false, docs: false };
     }
     const tokens = JSON.parse(fs.readFileSync(TOKEN_PATH, "utf-8"));
     const scope: string = tokens.scope ?? "";
@@ -75,9 +78,11 @@ export function getGrantedServices(): {
       gmail:
         scope.includes("gmail.readonly") ||
         scope.includes("gmail.compose"),
+      docs:
+        scope.includes("documents") && scope.includes("drive"),
     };
   } catch {
-    return { calendar: false, gmail: false };
+    return { calendar: false, gmail: false, docs: false };
   }
 }
 

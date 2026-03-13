@@ -2,6 +2,8 @@ import { generateText, Output, UIMessage } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import { listEvents } from "../../google-calendar";
+import { MODEL_ID } from "@/app/api/chat/prompts";
+import { extractTextFromMessage } from "../utils";
 
 /**
  * Result of the high-level conflict check.
@@ -60,7 +62,7 @@ export const extractEventIntent = async (
   timeZone: string
 ) => {
   const result = await generateText({
-    model: openai("gpt-4o-mini"),
+    model: openai(MODEL_ID as string),
     output: Output.object({ schema: eventIntentSchema }),
     prompt: `You are analyzing a user message to determine their calendar intent.
 
@@ -102,7 +104,7 @@ export const detectConflict = async (
   proposedEnd: string
 ) => {
   const conflictRouterResult = await generateText({
-    model: openai("gpt-4o-mini"),
+    model: openai(MODEL_ID as string),
     output: Output.object({ schema: conflictDetectionSchema }),
     prompt: `You are a calendar conflict detection router.
 Your job is to determine if a proposed event time overlaps with any existing events.
@@ -186,18 +188,6 @@ function findLastMessageByRole(
 }
 
 /**
- * Extracts the concatenated text from a message's text parts.
- */
-function extractTextFromParts(message: UIMessage): string {
-  return (
-    message.parts
-      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
-      .map((p) => p.text)
-      .join(" ") ?? ""
-  );
-}
-
-/**
  * Checks whether the last assistant message contains a conflictWarning tool part,
  * indicating the user is currently responding to a conflict prompt.
  */
@@ -205,7 +195,10 @@ function isRespondingToConflictWarning(messages: UIMessage[]): boolean {
   const lastAssistantMessage = findLastMessageByRole(messages, "assistant");
   return (
     lastAssistantMessage?.parts?.some(
-      (p) => p.type === "tool-conflictWarning"
+      (p) =>
+        p.type === "tool-conflictWarning" &&
+        "state" in p &&
+        p.state === "output-available"
     ) ?? false
   );
 }
@@ -276,7 +269,7 @@ export async function checkForSchedulingConflict(
 
   if (googleConnected && isFreshUserMessage) {
     const lastUserMessage = findLastMessageByRole(messages, "user");
-    const userText = lastUserMessage ? extractTextFromParts(lastUserMessage) : "";
+    const userText = lastUserMessage ? extractTextFromMessage(lastUserMessage) : "";
 
     if (userText) {
       try {

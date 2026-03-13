@@ -2,6 +2,7 @@ import type { AgentConfig, AgentRoute } from "./types";
 import { getCurrentDateInfo } from "./utils";
 import { calendarAgentConfig } from "./calendar/prompt";
 import { emailAgentConfig } from "./email/prompt";
+import { docsAgentConfig } from "./docs/prompt";
 
 const generalAgentConfig: AgentConfig = {
   id: "general",
@@ -13,7 +14,7 @@ const generalAgentConfig: AgentConfig = {
 
 ${dateInfo}
 
-You have access to calendar and email capabilities. If the user asks about calendar or email features, let them know they can connect their Google account at /api/auth/google.`;
+You have access to calendar, email, and Google Docs capabilities. If the user asks about calendar, email, or document features, let them know they can connect their Google account at /api/auth/google.`;
   },
   getTools: () => undefined,
 };
@@ -24,6 +25,10 @@ const routeMap: Record<AgentRoute, AgentConfig[]> = {
   general: [generalAgentConfig],
   gmail_only: [emailAgentConfig],
   gmail_then_cal: [emailAgentConfig, calendarAgentConfig],
+  docs_only: [docsAgentConfig],
+  gmail_then_docs: [emailAgentConfig, docsAgentConfig],
+  docs_then_gmail: [docsAgentConfig, emailAgentConfig],
+  docs_then_cal: [docsAgentConfig, calendarAgentConfig],
 };
 
 export function getAgentPipeline(route: AgentRoute): AgentConfig[] {

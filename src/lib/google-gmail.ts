@@ -136,42 +136,76 @@ export async function readEmail(messageId: string): Promise<EmailFull> {
   };
 }
 
+/**
+ * Build fallback queries for a from: search that returned 0 results.
+ * Tries: first word only via from:, then the name as a plain keyword search.
+ */
+function buildFromFallbacks(query: string): string[] {
+  const fromMatch = query.match(/^from:(.+)$/i);
+  if (!fromMatch) return [];
+
+  const name = fromMatch[1].trim();
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return [name]; // plain keyword fallback
+
+  const fallbacks: string[] = [];
+  // Try from: with first word only (handles surname typos)
+  fallbacks.push(`from:${words[0]}`);
+  // Try plain keyword search with full name (matches subject/body too)
+  fallbacks.push(name);
+  return fallbacks;
+}
+
 export async function searchEmails(
   query: string,
   maxResults = 10
 ): Promise<EmailHeader[]> {
   const gmail = getGmailClient();
-  const response = await gmail.users.messages.list({
-    userId: GMAIL_USER_ID,
-    q: query,
-    maxResults,
-  });
 
-  if (!response.data.messages) return [];
+  const fetchResults = async (q: string): Promise<EmailHeader[]> => {
+    const response = await gmail.users.messages.list({
+      userId: GMAIL_USER_ID,
+      q,
+      maxResults,
+    });
 
-  const emails = await Promise.all(
-    response.data.messages.map(async (msg) => {
-      const detail = await gmail.users.messages.get({
-        userId: GMAIL_USER_ID,
-        id: msg.id!,
-        format: "METADATA",
-        metadataHeaders: ["From", "To", "Subject", "Date"],
-      });
-      const headers = detail.data.payload?.headers ?? [];
-      return {
-        id: detail.data.id!,
-        threadId: detail.data.threadId!,
-        subject: getHeader(headers, "Subject"),
-        from: getHeader(headers, "From"),
-        to: getHeader(headers, "To"),
-        date: getHeader(headers, "Date"),
-        snippet: detail.data.snippet ?? "",
-        labelIds: detail.data.labelIds ?? [],
-      };
-    })
-  );
+    if (!response.data.messages) return [];
 
-  return emails;
+    return Promise.all(
+      response.data.messages.map(async (msg) => {
+        const detail = await gmail.users.messages.get({
+          userId: GMAIL_USER_ID,
+          id: msg.id!,
+          format: "METADATA",
+          metadataHeaders: ["From", "To", "Subject", "Date"],
+        });
+        const headers = detail.data.payload?.headers ?? [];
+        return {
+          id: detail.data.id!,
+          threadId: detail.data.threadId!,
+          subject: getHeader(headers, "Subject"),
+          from: getHeader(headers, "From"),
+          to: getHeader(headers, "To"),
+          date: getHeader(headers, "Date"),
+          snippet: detail.data.snippet ?? "",
+          labelIds: detail.data.labelIds ?? [],
+        };
+      })
+    );
+  };
+
+  // Primary search
+  const results = await fetchResults(query);
+  if (results.length > 0) return results;
+
+  // Automatic fallback for from: queries that returned nothing
+  const fallbacks = buildFromFallbacks(query);
+  for (const fallbackQuery of fallbacks) {
+    const fallbackResults = await fetchResults(fallbackQuery);
+    if (fallbackResults.length > 0) return fallbackResults;
+  }
+
+  return [];
 }
 
 // Build RFC 2822 formatted email and base64url-encode it

@@ -16,13 +16,25 @@ IMPORTANT EMAIL ADDRESS RULE: You must NEVER fabricate, guess, or construct emai
 2. An email address returned by a previous tool call (listEmails, readEmail, searchEmails)
 If the user refers to someone by name only (e.g., "send an email to Eleni"), you MUST first search for their email using searchEmails (e.g., query "from:eleni") or ask the user to provide the email address. NEVER construct addresses like "name@example.com" or "name@gmail.com".
 
-IMPORTANT: When sending an email, if the user does not specify the subject or body, you MUST ask them for the missing information before calling the sendEmail tool.
+IMPORTANT: When sending an email, if the user does not specify the subject, you MUST ask them for it before calling the sendEmail tool. If the body is not specified but you have sufficient context (e.g., a document link from a chained pipeline, or prior conversation context), compose an appropriate body yourself and call sendEmail directly.
 
 IMPORTANT: Before replying to an email, always use readEmail first to get the full email content, including the messageId and threadId. This ensures your reply is properly threaded and contextually appropriate.
 
 IMPORTANT: When the user asks you to send or reply to an email, call the appropriate tool directly without asking for confirmation first. The user interface will show them an approval dialog with all the email details before the action is executed. Do NOT ask "Shall I proceed?" or "Would you like me to send this?" - just call the tool.
 
-IMPORTANT: If a tool call is rejected or denied by the user, this means they clicked "Reject" on the approval dialog. Acknowledge their decision politely and ask if they'd like to make changes or do something else. Do NOT assume Gmail is disconnected when a tool is rejected.
+IMPORTANT — TOOL REJECTION HANDLING: When a tool call returns a rejection/denial result, it means the user clicked "Reject" on the approval dialog in the UI. This is NOT a permissions error, NOT an authorization failure, and NOT a connectivity issue — the user simply chose not to proceed with that specific action. You MUST:
+1. Acknowledge their decision naturally (e.g., "No problem, I won't send that email." or "Understood, the email won't be sent.")
+2. Ask if they'd like to make changes to the email (different recipient, subject, body) or do something else entirely.
+3. NEVER say "I don't have permission", "I cannot send emails", "Gmail is not connected", or anything implying a technical limitation. The user HAS full access — they simply chose not to execute this particular action.
+
+IMPORTANT — SEARCH STRATEGY: When searching for emails, use the right approach based on context:
+- For PERSON names (e.g., "emails from Maria Papadopoulou"): use "from:maria papadopoulou" — Gmail's from: operator handles display name matching well for people.
+- For COMPANY or ORGANIZATION names (e.g., "emails from Global Express Logistics"): prefer a keyword search with the most distinctive words (e.g., "Express Logistics") rather than "from:Global Express Logistics", since company display names vary and from: requires near-exact matching.
+- MANDATORY RETRY RULE: If a search returns no results, you MUST call searchEmails again with a different query before responding to the user. NEVER say "no results found" after only one search attempt. Retry strategies:
+  (a) Drop the last name and search with first name only (e.g., "from:maria" instead of "from:maria papadopoulou")
+  (b) Switch between from: and a plain keyword search
+  (c) Use just the most distinctive single word from the name
+  You must exhaust at least 2 different queries before concluding that no emails exist.
 
 IMPORTANT: When displaying email content, format it clearly showing the sender, subject, date, and body. For email lists, show subject, sender, and date in a readable format.
 
@@ -50,7 +62,16 @@ export const emailAgentConfig: AgentConfig = {
     }
 
     if (context.priorAgentResult) {
-      prompt += `\n\nContext from previous step:\n${context.priorAgentResult}`;
+      prompt += `\n\nIMPORTANT — CHAINED PIPELINE CONTEXT:
+The information below was gathered by a prior agent (e.g., from Google Docs) as part of a coordinated pipeline. The data has ALREADY been retrieved on your behalf. You MUST:
+1. Use the provided information when composing the email — do NOT say you cannot access documents or disclaim access to any service. The retrieval already happened.
+2. If document details are provided (title, webViewLink URL), you MUST include the document link in the email body so the recipient can access it. Format it naturally, e.g., "You can view the document here: [webViewLink URL]". Do NOT say the document is "attached" — it is shared as a link.
+3. If the user asks to "attach" or "append" a document to an email, include the document link in the email body. File attachments are not supported — the link is the way to share documents via email.
+4. Do NOT search for the document yourself — the information is already below.
+5. When a document link is provided and the user has specified a recipient and subject, you have everything needed to send the email. The document link serves as the email body. Call sendEmail directly — do NOT ask the user for additional body text.
+
+Prior agent output:
+${context.priorAgentResult}`;
     }
 
     if (context.additionalContext) {

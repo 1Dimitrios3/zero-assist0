@@ -44,27 +44,47 @@ export function filterSupersededToolParts(
   // Track which tool calls we've already included to avoid duplicates
   const includedToolCallIds = new Set<string>();
 
+  // Find the last assistant message index — non-completed tool parts
+  // in this message may be from the CURRENT stream (pending approval).
+  // Only remove non-completed parts from OLDER messages (true orphans).
+  const lastAssistantIdx = messages.findLastIndex(
+    (m) => m.role === "assistant"
+  );
+
   return messages
-    .map((msg) => {
+    .map((msg, idx) => {
       // Keep non-assistant messages as-is
       if (msg.role !== "assistant") return msg;
 
-      const hadToolParts = msg.parts.some((p) => p.type.startsWith("tool-"));
+      // Track whether this message had completed tool parts (whose final
+      // state lives in a subsequent message, meaning text is duplicated).
+      const hadCompletedToolParts = msg.parts.some(
+        (p) =>
+          p.type.startsWith("tool-") &&
+          "toolCallId" in p &&
+          completedToolCallIds.has(p.toolCallId as string)
+      );
 
       const filteredParts = msg.parts.filter((part) => {
         // Keep non-tool parts
         if (!part.type.startsWith("tool-")) return true;
 
-        // For tool parts, check if superseded or duplicate
+        // For tool parts, check if superseded, orphaned, or duplicate
         if ("toolCallId" in part && "state" in part) {
           const toolCallId = part.toolCallId as string;
           const state = part.state as string;
 
-          // Keep if this tool hasn't completed yet (but still deduplicate)
           if (!completedToolCallIds.has(toolCallId)) {
-            if (includedToolCallIds.has(toolCallId)) return false;
-            includedToolCallIds.add(toolCallId);
-            return true;
+            // Keep non-completed tool parts in the LAST assistant message
+            // (they might be pending approval from the current stream).
+            // Remove from older messages — they're orphans from past
+            // interrupted interactions.
+            if (idx === lastAssistantIdx) {
+              if (includedToolCallIds.has(toolCallId)) return false;
+              includedToolCallIds.add(toolCallId);
+              return true;
+            }
+            return false;
           }
 
           // For completed tools, only keep final state and only once
@@ -85,10 +105,11 @@ export function filterSupersededToolParts(
 
       const hasToolPartsAfterFilter = filteredParts.some((p) => p.type.startsWith("tool-"));
 
-      // Drop assistant messages that originally had tool parts but lost them all
-      // after filtering. These are "husk" messages whose text content is duplicated
-      // in the subsequent assistant message that holds the final tool state.
-      if (hadToolParts && !hasToolPartsAfterFilter) {
+      // Drop "husk" messages whose COMPLETED tool parts were all superseded
+      // (their final state lives in a subsequent message, so text is
+      // duplicated there). Don't husk messages that only had orphaned
+      // (non-completed) tool parts removed — their text isn't duplicated.
+      if (hadCompletedToolParts && !hasToolPartsAfterFilter) {
         return { ...msg, parts: [] };
       }
 
