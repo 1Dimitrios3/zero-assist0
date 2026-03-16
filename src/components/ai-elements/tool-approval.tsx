@@ -250,7 +250,7 @@ export function ToolApproval({
     <Dialog.Root open={open} onOpenChange={() => {/* Prevent closing on backdrop click */}}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-background p-6 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[60vh] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background p-6 shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
           <Dialog.Title
             className={cn(
               "flex items-center gap-2 text-lg font-semibold",
@@ -265,7 +265,7 @@ export function ToolApproval({
             {getToolDescription(toolName)}
           </Dialog.Description>
 
-          <div className="mt-4 space-y-3 rounded-md bg-muted p-4">
+          <div className="mt-4 flex-1 min-h-0 space-y-3 overflow-y-auto rounded-md bg-muted p-4">
             {isDocsAction ? (
               <>
                 {"title" in input && (
@@ -282,7 +282,7 @@ export function ToolApproval({
                     <FileTextIcon className="mt-0.5 size-4 text-muted-foreground" />
                     <div className="text-sm">
                       <p className="font-medium">Content:</p>
-                      <p className="whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                      <p className="whitespace-pre-wrap text-muted-foreground">
                         {(input as DocCreateInput).content}
                       </p>
                     </div>
@@ -293,7 +293,7 @@ export function ToolApproval({
                     <FilePenIcon className="mt-0.5 size-4 text-muted-foreground" />
                     <div className="text-sm">
                       <p className="font-medium">Content to append:</p>
-                      <p className="whitespace-pre-wrap text-muted-foreground max-h-40 overflow-y-auto">
+                      <p className="whitespace-pre-wrap text-muted-foreground">
                         {(input as DocAppendInput).text}
                       </p>
                     </div>
@@ -356,7 +356,7 @@ export function ToolApproval({
                     <MailIcon className="mt-0.5 size-4 text-muted-foreground" />
                     <div className="text-sm">
                       <p className="font-medium">Body:</p>
-                      <p className="whitespace-pre-wrap break-all text-muted-foreground max-h-40 overflow-y-auto">
+                      <p className="whitespace-pre-wrap break-all text-muted-foreground">
                         {(input as EmailSendInput).body}
                       </p>
                     </div>
@@ -455,7 +455,7 @@ export function ToolApproval({
             )}
           </div>
 
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="mt-auto flex shrink-0 justify-end gap-3 pt-6">
             <button
               type="button"
               onClick={handleReject}

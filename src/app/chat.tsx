@@ -6,7 +6,7 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
-import { Loader } from "@/components/ai-elements/loader";
+import { ActivityIndicator } from "@/components/ai-elements/activity-indicator";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import {
   PromptInput,
@@ -151,7 +151,7 @@ export const Chat = () => {
               })}
             </div>
           ))}
-          {status === "submitted" && <Loader />}
+          <ActivityIndicator status={status} messages={messages} />
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>

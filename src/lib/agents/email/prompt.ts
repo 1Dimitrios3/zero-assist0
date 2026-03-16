@@ -65,10 +65,12 @@ export const emailAgentConfig: AgentConfig = {
       prompt += `\n\nIMPORTANT — CHAINED PIPELINE CONTEXT:
 The information below was gathered by a prior agent (e.g., from Google Docs) as part of a coordinated pipeline. The data has ALREADY been retrieved on your behalf. You MUST:
 1. Use the provided information when composing the email — do NOT say you cannot access documents or disclaim access to any service. The retrieval already happened.
-2. If document details are provided (title, webViewLink URL), you MUST include the document link in the email body so the recipient can access it. Format it naturally, e.g., "You can view the document here: [webViewLink URL]". Do NOT say the document is "attached" — it is shared as a link.
-3. If the user asks to "attach" or "append" a document to an email, include the document link in the email body. File attachments are not supported — the link is the way to share documents via email.
-4. Do NOT search for the document yourself — the information is already below.
-5. When a document link is provided and the user has specified a recipient and subject, you have everything needed to send the email. The document link serves as the email body. Call sendEmail directly — do NOT ask the user for additional body text.
+2. Determine what the user wants in the email body based on their request:
+   - If the user asks to "send the contents", "move contents to an email", "include the content", or similar → use the actual document TEXT content as the email body. Do NOT include a link unless the user also asks for one.
+   - If the user asks to "share", "attach", "append", or "send the document/doc" (referring to the document itself, not its contents) → include the document link in the email body. Format it naturally, e.g., "You can view the document here: [webViewLink URL]". Do NOT say the document is "attached" — it is shared as a link.
+   - If ambiguous, default to including the document link.
+3. Do NOT search for the document yourself — the information is already below.
+4. When the prior agent output provides sufficient information (document content or link) and the user has specified a recipient and subject, you have everything needed. Call sendEmail directly — do NOT ask the user for additional body text.
 
 Prior agent output:
 ${context.priorAgentResult}`;
