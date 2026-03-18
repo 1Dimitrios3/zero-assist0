@@ -126,6 +126,13 @@ export function useAudioRecorder({
         });
         chunksRef.current = [];
         mediaRecorderRef.current = null;
+
+        // Discard recordings that are just a container header with no audio data
+        if (blob.size < 1000) {
+          setState("idle");
+          return;
+        }
+
         sendForTranscription(blob);
       };
 
