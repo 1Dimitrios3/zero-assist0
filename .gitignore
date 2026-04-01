@@ -46,4 +46,5 @@ token.json
 next-env.d.ts
 
 # claude
-.claude
+.claude/*
+!.claude/docs/
