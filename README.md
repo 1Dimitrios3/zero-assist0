@@ -16,7 +16,7 @@ Multi-agent AI assistant with Google Calendar, Gmail, and Google Docs integratio
 
 ## Setup
 
-1. Create a Google Cloud project, enable Calendar API + Gmail API + Google Docs API + Google Drive API, configure OAuth consent with scopes (`calendar`, `gmail.readonly`, `gmail.compose`, `documents`, `drive.readonly`), and create OAuth credentials. See [CLAUDE.md](./CLAUDE.md) for detailed steps.
+1. Create a Google Cloud project, enable Calendar API + Gmail API + Google Docs API + Google Drive API, configure OAuth consent with scopes (`calendar`, `gmail.readonly`, `gmail.compose`, `documents`, `drive.readonly`), and create OAuth credentials. See [Setup & Auth](.claude/docs/setup-auth.md) for detailed steps.
 
 2. Configure environment:
    ```bash
@@ -72,6 +72,18 @@ If you need to re-authenticate (e.g., token expired, changed scopes, switched ac
 - **Calendar, email, or docs tools not appearing** — the app checks the granted scopes in `token.json`. If you authenticated before an API was enabled or new scopes were added, delete `token.json` and re-authenticate.
 - **"Google account not connected" message in chat** — the `token.json` file is missing or corrupted. Re-authenticate using the steps above.
 
+## Usage Examples
+
+**Calendar**: "What's on my calendar today?", "Schedule a meeting tomorrow at 2pm", "Delete my dentist appointment"
+
+**Email**: "Show me my recent emails", "Send an email to john@example.com", "Reply to that email"
+
+**Docs**: "Show me my recent documents", "Create a doc called Meeting Notes", "Read my project plan", "Add notes to my report doc", "Change 'draft' to 'final' in my proposal"
+
+**Cross-agent**: "Check my emails from John and schedule any meetings he mentions", "Read my emails and compile a summary doc", "Read my project timeline doc and schedule the milestones"
+
+**Voice**: Microphone input transcribed via OpenAI Whisper.
+
 ## Development
 
 ```bash
@@ -92,4 +104,4 @@ User Message → POST /api/chat → orchestrate(messages)
   └─ Stream response with tool approval support
 ```
 
-See [CLAUDE.md](./CLAUDE.md) for detailed architecture, key files, and agent design.
+See [Architecture](.claude/docs/architecture.md) for detailed flow, key files, and [Agent Reference](.claude/docs/agent-reference.md) for per-agent tools and approval rules.
