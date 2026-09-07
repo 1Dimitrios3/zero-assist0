@@ -117,7 +117,7 @@ export async function orchestrate(
         const rawHeadlessMessages = await convertToModelMessages(textOnlyMessages);
         const headlessMessages = deduplicateModelMessages(rawHeadlessMessages);
         const result = await generateText({
-          model: openai(MODEL_ID as string),
+          model: openai.chat(MODEL_ID as string),
           system: agent.getSystemPrompt(context),
           messages: headlessMessages,
           tools: stripToolApprovals(agent.getTools(context)),
@@ -156,7 +156,7 @@ export async function orchestrate(
   const modelMessages = deduplicateModelMessages(rawModelMessages);
 
   const stream = streamText({
-    model: openai(MODEL_ID as string),
+    model: openai.chat(MODEL_ID as string),
     system: finalAgent.getSystemPrompt(context),
     messages: modelMessages,
     tools: finalAgent.getTools(context),

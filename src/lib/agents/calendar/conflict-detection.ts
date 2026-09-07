@@ -62,7 +62,7 @@ export const extractEventIntent = async (
   timeZone: string
 ) => {
   const result = await generateText({
-    model: openai(MODEL_ID as string),
+    model: openai.chat(MODEL_ID as string),
     output: Output.object({ schema: eventIntentSchema }),
     prompt: `You are analyzing a user message to determine their calendar intent.
 
@@ -104,7 +104,7 @@ export const detectConflict = async (
   proposedEnd: string
 ) => {
   const conflictRouterResult = await generateText({
-    model: openai(MODEL_ID as string),
+    model: openai.chat(MODEL_ID as string),
     output: Output.object({ schema: conflictDetectionSchema }),
     prompt: `You are a calendar conflict detection router.
 Your job is to determine if a proposed event time overlaps with any existing events.

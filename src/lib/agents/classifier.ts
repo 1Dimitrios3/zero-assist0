@@ -45,7 +45,7 @@ export async function classifyIntent(
     : "";
 
   const result = await generateText({
-    model: openai(MODEL_ID as string),
+    model: openai.chat(MODEL_ID as string),
     output: Output.object({ schema: classificationSchema }),
     prompt: `You are an intent classifier. Given a user message and recent conversation context, determine which agent should handle it.
 
